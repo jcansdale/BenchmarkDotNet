@@ -28,8 +28,8 @@ namespace BenchmarkDotNet.Configs
         public static IConfig With(this IConfig config, params IJob[] jobs) => config.With(m => m.Add(jobs));
         public static IConfig With(this IConfig config, IOrderProvider provider) => config.With(m => m.Set(provider));
 
-        public static IConfig KeepBenchmarkFiles(this IConfig config) => config.With(m => m.KeepBenchmarkFiles = true);
-        public static IConfig RemoveBenchmarkFiles(this IConfig config) => config.With(m => m.KeepBenchmarkFiles = false);
+        public static IConfig KeepBenchmarkFiles(this IConfig config, bool value = true) => config.With(m => m.KeepBenchmarkFiles = value);
+        public static IConfig RemoveBenchmarkFiles(this IConfig config) => config.KeepBenchmarkFiles(false);
 
         private static IConfig With(this IConfig config, Action<ManualConfig> addAction)
         {

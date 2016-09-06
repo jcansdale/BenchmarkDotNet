@@ -1,4 +1,4 @@
-﻿namespace BenchmarkDotNet.Running
+﻿namespace BenchmarkDotNet.Engine
 {
     public enum IterationMode
     {

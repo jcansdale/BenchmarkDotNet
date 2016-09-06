@@ -2,7 +2,10 @@
 {
     public enum Mode
     {
-        SingleRun,
+        /// <summary>
+        /// A mode without overhead evaluating and warmup, with single invocation
+        /// </summary>
+        ColdStart,
         Throughput
     }
 }

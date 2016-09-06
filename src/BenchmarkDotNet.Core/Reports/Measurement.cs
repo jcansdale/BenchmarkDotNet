@@ -1,8 +1,8 @@
 ﻿using System;
+using BenchmarkDotNet.Engine;
 using BenchmarkDotNet.Extensions;
 using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Loggers;
-using BenchmarkDotNet.Running;
 
 namespace BenchmarkDotNet.Reports
 {

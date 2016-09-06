@@ -23,15 +23,15 @@ namespace BenchmarkDotNet.IntegrationTests
             var config = ManualConfig.CreateEmpty()
                 .With(DefaultConfig.Instance.GetColumns().ToArray())
                 .With(logger)
-                .With(Job.Dry.With(Mode.SingleRun))
+                .With(Job.Dry.With(Mode.ColdStart))
                 .With(Job.Dry.With(Mode.Throughput));
 
             var results = CanExecute<ModeBenchmarks>(config);
 
             Assert.Equal(4, results.Benchmarks.Count());
 
-            Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.SingleRun && b.Target.Method.Name == "BenchmarkWithVoid"));
-            Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.SingleRun && b.Target.Method.Name == "BenchmarkWithReturnValue"));
+            Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.ColdStart && b.Target.Method.Name == "BenchmarkWithVoid"));
+            Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.ColdStart && b.Target.Method.Name == "BenchmarkWithReturnValue"));
 
             Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.Throughput && b.Target.Method.Name == "BenchmarkWithVoid"));
             Assert.Equal(1, results.Benchmarks.Count(b => b.Job.Mode == Mode.Throughput && b.Target.Method.Name == "BenchmarkWithReturnValue"));

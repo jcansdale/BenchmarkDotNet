@@ -21,7 +21,7 @@ namespace BenchmarkDotNet.Samples.Intro
             {
                 Add(new Job
                 {
-                    Mode = Mode.SingleRun,
+                    Mode = Mode.ColdStart,
                     LaunchCount = 4,
                     WarmupCount = 3,
                     TargetCount = 20

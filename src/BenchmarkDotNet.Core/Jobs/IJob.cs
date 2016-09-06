@@ -1,5 +1,7 @@
 ﻿using BenchmarkDotNet.Toolchains;
 using System;
+using BenchmarkDotNet.Horology;
+using JetBrains.Annotations;
 
 namespace BenchmarkDotNet.Jobs
 {
@@ -30,6 +32,17 @@ namespace BenchmarkDotNet.Jobs
         /// <seealso href="https://msdn.microsoft.com/library/system.diagnostics.process.processoraffinity.aspx"/>
         /// </summary>
         Count Affinity { get; }
+
+        /// <summary>
+        /// Accuracy requirements.
+        /// </summary>
+        Accuracy Accuracy { get; }
+
+        /// <summary>
+        /// Clock for measurements. null values corresponds to Chronometer (best available clock).
+        /// </summary>
+        [CanBeNull]
+        IClock Clock { get; }
 
         Property[] AllProperties { get; }
     }

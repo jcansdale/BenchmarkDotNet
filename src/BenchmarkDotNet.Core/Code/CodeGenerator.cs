@@ -16,27 +16,25 @@ namespace BenchmarkDotNet.Code
     {
         internal static string Generate(Benchmark benchmark)
         {
-            var declarationsProvider = GetDeclarationsProvider(benchmark.Target);
+            var provider = GetDeclarationsProvider(benchmark.Target);
 
-            return new StringBuilder(ResourceHelper.LoadTemplate("BenchmarkProgram.txt"))
-               .Replace("$OperationsPerInvoke$", declarationsProvider.OperationsPerInvoke)
-               .Replace("$TargetTypeNamespace$", declarationsProvider.TargetTypeNamespace)
-               .Replace("$TargetMethodReturnTypeNamespace$", declarationsProvider.TargetMethodReturnTypeNamespace)
-               .Replace("$TargetTypeName$", declarationsProvider.TargetTypeName)
-               .Replace("$TargetMethodDelegate$", declarationsProvider.TargetMethodDelegate)
-               .Replace("$TargetMethodResultHolder$", declarationsProvider.TargetMethodResultHolder)
-               .Replace("$TargetMethodDelegateType$", declarationsProvider.TargetMethodDelegateType)
-               .Replace("$TargetMethodHoldValue$", declarationsProvider.TargetMethodHoldValue)
-               .Replace("$TargetMethodReturnType$", declarationsProvider.TargetMethodReturnType)
-               .Replace("$IdleMethodDelegateType$", declarationsProvider.IdleMethodDelegateType)
-               .Replace("$IdleMethodReturnType$", declarationsProvider.IdleMethodReturnType)
-               .Replace("$SetupMethodName$", declarationsProvider.SetupMethodName)
-               .Replace("$CleanupMethodName$", declarationsProvider.CleanupMethodName)
-               .Replace("$IdleImplementation$", declarationsProvider.IdleImplementation)
-               .Replace("$AdditionalLogic$", benchmark.Target.AdditionalLogic)
-               .Replace("$TargetBenchmarkTaskArguments$", benchmark.Job.GenerateWithDefinitions())
-               .Replace("$ParamsContent$", GetParamsContent(benchmark))
-               .ToString();
+            return new SmartStringBuilder(ResourceHelper.LoadTemplate("BenchmarkProgram.txt")).
+                Replace("$OperationsPerInvoke$", provider.OperationsPerInvoke).
+                Replace("$TargetTypeNamespace$", provider.TargetTypeNamespace).
+                Replace("$TargetMethodReturnTypeNamespace$", provider.TargetMethodReturnTypeNamespace).
+                Replace("$TargetTypeName$", provider.TargetTypeName).
+                Replace("$TargetMethodDelegate$", provider.TargetMethodDelegate).
+                Replace("$TargetMethodDelegateType$", provider.TargetMethodDelegateType).
+                Replace("$IdleMethodDelegateType$", provider.IdleMethodDelegateType).
+                Replace("$IdleMethodReturnType$", provider.IdleMethodReturnType).
+                Replace("$SetupMethodName$", provider.SetupMethodName).
+                Replace("$CleanupMethodName$", provider.CleanupMethodName).
+                Replace("$IdleImplementation$", provider.IdleImplementation).
+                Replace("$HasReturnValue$", provider.HasReturnValue).
+                Replace("$AdditionalLogic$", benchmark.Target.AdditionalLogic).
+                Replace("$TargetBenchmarkTaskArguments$", benchmark.Job.GenerateWithDefinitions()).
+                Replace("$ParamsContent$", GetParamsContent(benchmark)).
+                ToString();
         }
 
         private static DeclarationsProvider GetDeclarationsProvider(Target target)
@@ -99,6 +97,27 @@ namespace BenchmarkDotNet.Code
             if (value is Type)
                 return "typeof(" + ((Type)value).GetCorrectTypeName() + ")";
             return value.ToString();
+        }
+
+        private class SmartStringBuilder
+        {
+            private readonly StringBuilder builder;
+
+            public SmartStringBuilder(string text)
+            {
+                builder = new StringBuilder(text);
+            }
+
+            public SmartStringBuilder Replace(string oldValue, string newValue)
+            {
+                if (builder.ToString().Contains(oldValue))
+                    builder.Replace(oldValue, newValue);
+                else
+                    builder.Append($"\n// '{oldValue}' not found");
+                return this;
+            }
+
+            public override string ToString() => builder.ToString();
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using BenchmarkDotNet.Toolchains;
 using System;
+using BenchmarkDotNet.Horology;
 
 namespace BenchmarkDotNet.Jobs
 {
@@ -9,7 +10,7 @@ namespace BenchmarkDotNet.Jobs
         public static readonly IJob LegacyJitX86 = new Job { Platform = Platform.X86, Jit = Jit.LegacyJit };
         public static readonly IJob LegacyJitX64 = new Job { Platform = Platform.X64, Jit = Jit.LegacyJit };
         public static readonly IJob RyuJitX64 = new Job { Platform = Platform.X64, Jit = Jit.RyuJit };
-        public static readonly IJob Dry = new Job { Mode = Mode.SingleRun, LaunchCount = 1, WarmupCount = 1, TargetCount = 1 };
+        public static readonly IJob Dry = new Job { Mode = Mode.ColdStart, LaunchCount = 1, WarmupCount = 1, TargetCount = 1 };
         public static readonly IJob[] AllJits = { LegacyJitX86, LegacyJitX64, RyuJitX64 };
         public static readonly IJob Clr = new Job { Runtime = Runtime.Clr };
         public static readonly IJob Mono = new Job { Runtime = Runtime.Mono };
@@ -32,6 +33,8 @@ namespace BenchmarkDotNet.Jobs
         public Count TargetCount { get; set; } = Count.Auto;
         public Count IterationTime { get; set; } = Count.Auto;
         public Count Affinity { get; set; } = Count.Auto;
+        public Accuracy Accuracy { get; set; } = Accuracy.Default;
+        public IClock Clock { get; set; } = null;
 
         public Property[] AllProperties => allProperties.Value;
 

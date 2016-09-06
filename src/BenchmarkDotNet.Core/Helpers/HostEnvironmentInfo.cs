@@ -90,7 +90,7 @@ namespace BenchmarkDotNet.Helpers
         /// <summary>
         /// The frequency of the timer as the number of ticks per second.
         /// </summary>
-        public long ChronometerFrequency { get; }
+        public Frequency ChronometerFrequency { get; }
 
         public HardwareTimerKind HardwareTimerKind { get; }
 
@@ -115,7 +115,7 @@ namespace BenchmarkDotNet.Helpers
 
         public new static HostEnvironmentInfo GetCurrent() => Current ?? (Current = new HostEnvironmentInfo());
 
-        public double GetChronometerResolution() => Chronometer.BestClock.GetResolution(TimeUnit.Nanoseconds);
+        public TimeInterval GetChronometerResolution() => Chronometer.BestClock.GetResolution();
 
         public override IEnumerable<string> ToFormattedString()
         {
@@ -123,7 +123,7 @@ namespace BenchmarkDotNet.Helpers
             yield return $"{BenchmarkDotNetCaption}=v{BenchmarkDotNetVersion}";
             yield return $"OS={OsVersion}";
             yield return $"Processor={ProcessorName.Value}, ProcessorCount={ProcessorCount}";
-            yield return $"Frequency={ChronometerFrequency} ticks, Resolution={GetChronometerResolution().ToTimeStr()}, Timer={HardwareTimerKind.ToString().ToUpper()}";
+            yield return $"Frequency={ChronometerFrequency}, Resolution={GetChronometerResolution()}, Timer={HardwareTimerKind.ToString().ToUpper()}";
             yield return $"CLR={ClrVersion}, Arch={Architecture} {Configuration}{GetDebuggerFlag()}{GetJitFlag()}";
             yield return $"GC={GetGCLatencyMode()} {GetGCMode()}";
 #if CLASSIC
