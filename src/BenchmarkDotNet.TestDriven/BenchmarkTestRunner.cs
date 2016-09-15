@@ -5,6 +5,7 @@ using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Attributes;
 using TestDriven.Framework;
+using System.IO;
 
 namespace BenchmarkDotNet.TestDriven
 {
@@ -25,6 +26,8 @@ namespace BenchmarkDotNet.TestDriven
         {
             try
             {
+                setCurrentDirectory(assembly);
+
                 var summary = run(assembly, member);
                 if (summary == null)
                 {
@@ -46,6 +49,15 @@ namespace BenchmarkDotNet.TestDriven
                 testListener.WriteLine(e.Message, Category.Warning);
                 return TestRunState.Error;
             }
+        }
+
+        // Workaround for:
+        // CurrentDirectory not set for dotnet-test based test runners
+        // https://github.com/jcansdale/TestDriven.Net-Issues/issues/50
+        static void setCurrentDirectory(Assembly assembly)
+        {
+            var dir = Path.GetDirectoryName(assembly.Location);
+            Directory.SetCurrentDirectory(dir);
         }
 
         static TestResult getTestResult(Benchmark benchmark)
