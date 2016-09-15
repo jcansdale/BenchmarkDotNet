@@ -8,8 +8,6 @@ namespace BenchmarkDotNet.TestDriven
     {
         public FastAndDirtyClrAndCoreConfig()
         {
-            Add(DefaultConfig.Instance);
-
             Add(Job.Clr
                 .WithLaunchCount(1)     // benchmark process will be launched only once
                 .WithIterationTime(100) // 100ms per iteration

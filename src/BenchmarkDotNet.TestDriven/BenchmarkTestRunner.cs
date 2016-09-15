@@ -99,9 +99,9 @@ namespace BenchmarkDotNet.TestDriven
             try
             {
                 var config = (IConfig)Activator.CreateInstance(configType);
-                return config;
+                return ManualConfig.Union(DefaultConfig.Instance, config);
             }
-            catch(InvalidCastException)
+            catch (InvalidCastException)
             {
                 throw new TestRunnerException(string.Format("ConfigType `{0}` must implement `{1}`.",
                     configType.FullName, typeof(IConfig).FullName));
