@@ -39,9 +39,7 @@
     "xmlDoc": true
   },
   "dependencies": {
-    "BenchmarkDotNet": {
-      "target": "project"
-    },
+    "BenchmarkDotNet": "0.9.*",
     "TestDriven.Framework": "2.0.0-alpha2"
   },
   "frameworks": {
