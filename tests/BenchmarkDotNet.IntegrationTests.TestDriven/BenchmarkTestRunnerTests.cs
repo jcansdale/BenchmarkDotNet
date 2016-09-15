@@ -99,12 +99,7 @@
     {
         public QuickConfig()
         {
-            Add(Job.Default
-                .WithLaunchCount(1)     // benchmark process will be launched only once
-                .WithIterationTime(1)   // 1ms per iteration
-                .WithWarmupCount(1)     // 1 warmup iteration
-                .WithTargetCount(1)     // 1 target iteration
-            );
+            Add(Job.Dry);
         }
     }
 
