@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;
@@ -37,12 +38,12 @@ namespace BenchmarkDotNet.Tests.Mocks
         {
             var benchmark = CreateBenchmark(config);
             var buildResult = BuildResult.Success(GenerateResult.Success(ArtifactsPaths.Empty));
-            var executeResult = new ExecuteResult(true, 0, new List<string>());
+            var executeResult = new ExecuteResult(true, 0, new List<string>(), new string[0]);
             var measurements = new List<Measurement>
             {
                 new Measurement(1, IterationMode.Result, 1, 1, 1)
             };
-            return new BenchmarkReport(benchmark, buildResult, buildResult, new List<ExecuteResult> { executeResult }, measurements);
+            return new BenchmarkReport(benchmark, buildResult, buildResult, new List<ExecuteResult> { executeResult }, measurements, default(GcStats));
         }
 
         public class MockBenchmarkClass

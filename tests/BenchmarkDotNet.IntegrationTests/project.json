@@ -10,17 +10,18 @@
       "buildOptions": {
         "define": [ "RELEASE", "TRACE" ],
         "optimize": true,
-        "keyFile": "../../strongNameKey.snk",
+        "keyFile": "../../src/strongNameKey.snk",
         "strongName": true
       }
     }
   },
   "testRunner": "xunit",
   "buildOptions": {
-    "copyToOutput": [ "xunit.runner.json" ]
+    "copyToOutput": [ "xunit.runner.json" ],
+    "allowUnsafe": true
   },
   "frameworks": {
-    "netcoreapp1.0": {
+    "netcoreapp1.1": {
       "buildOptions": {
         "define": [ "CORE" ]
       },
@@ -32,7 +33,7 @@
       "dependencies": {
         "Microsoft.NETCore.App": {
           "type": "platform",
-          "version": "1.0.0"
+          "version": "1.1.0"
         },
         "System.ComponentModel.EventBasedAsync": "4.0.11"
       }

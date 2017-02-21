@@ -14,8 +14,6 @@ namespace BenchmarkDotNet.Loggers
         private readonly Benchmark benchmark;
         private readonly IDiagnoser diagnoser;
 
-        private bool diagnosticsAlreadyRun = false;
-
         public SynchronousProcessOutputLoggerWithDiagnoser(ILogger logger, Process process, IDiagnoser diagnoser, Benchmark benchmark)
         {
             if (!process.StartInfo.RedirectStandardOutput)
@@ -28,10 +26,13 @@ namespace BenchmarkDotNet.Loggers
             this.diagnoser = diagnoser;
             this.benchmark = benchmark;
 
-            Lines = new List<string>();
+            LinesWithResults = new List<string>();
+            LinesWithExtraOutput = new List<string>();
         }
 
-        internal List<string> Lines { get; }
+        internal List<string> LinesWithResults { get; }
+
+        internal List<string> LinesWithExtraOutput { get; }
 
         internal void ProcessInput()
         {
@@ -40,25 +41,28 @@ namespace BenchmarkDotNet.Loggers
             {
                 logger.WriteLine(LogKind.Default, line);
 
-                if (!line.StartsWith("//") && !string.IsNullOrEmpty(line))
-                {
-                    Lines.Add(line);
-                }
-
-                // This is important so the Diagnoser can know the [Benchmark] methods will have run and (e.g.) it can do a Memory Dump
-                if (diagnosticsAlreadyRun || !line.StartsWith(IterationMode.MainWarmup.ToString()))
-                {
+                if (string.IsNullOrEmpty(line))
                     continue;
-                }
 
-                try
+                if (!line.StartsWith("//"))
                 {
-                    diagnoser?.AfterBenchmarkHasRun(benchmark, process);
+                    LinesWithResults.Add(line);
                 }
-                finally
+                else if (line == Engine.Signals.BeforeAnythingElse)
                 {
-                    // Always set this, even if something went wrong, otherwise we will try on every run of a benchmark batch
-                    diagnosticsAlreadyRun = true;
+                    diagnoser?.BeforeAnythingElse(process, benchmark);
+                }
+                else if (line == Engine.Signals.AfterSetup)
+                {
+                    diagnoser?.AfterSetup(process, benchmark);
+                }
+                else if (line == Engine.Signals.BeforeCleanup)
+                {
+                    diagnoser?.BeforeCleanup();
+                }
+                else
+                {
+                    LinesWithExtraOutput.Add(line);
                 }
             }
         }

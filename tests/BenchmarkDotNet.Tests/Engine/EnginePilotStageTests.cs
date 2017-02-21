@@ -41,9 +41,11 @@ namespace BenchmarkDotNet.Tests.Engine
 
         private void AutoTest(Frequency clockFrequency, TimeInterval operationTime, double maxStdErrRelative, long minInvokeCount)
         {
-            var job = Job.Default.
-                With(new MockClock(clockFrequency)).
-                WithMaxStdErrRelative(maxStdErrRelative);
+            var job = new Job
+            {
+                Infrastructure = { Clock = new MockClock(clockFrequency) },
+                Accuracy = { MaxStdErrRelative = maxStdErrRelative }
+            }.Freeze();
             var stage = CreateStage(job, data => data.InvokeCount * operationTime);
             long invokeCount = stage.Run();
             output.WriteLine($"InvokeCount = {invokeCount} (Min= {minInvokeCount}, Max = {MaxPossibleInvokeCount})");
@@ -52,9 +54,11 @@ namespace BenchmarkDotNet.Tests.Engine
 
         private void SpecificTest(TimeInterval iterationTime, TimeInterval operationTime, long minInvokeCount, long maxInvokeCount)
         {
-            var job = Job.Default.
-                With(new MockClock(Frequency.MHz)).
-                WithIterationTime(iterationTime);
+            var job = new Job
+            {
+                Infrastructure = { Clock = new MockClock(Frequency.MHz) },
+                Run = { IterationTime = iterationTime }
+            }.Freeze();
             var stage = CreateStage(job, data => data.InvokeCount * operationTime);
             long invokeCount = stage.Run();
             output.WriteLine($"InvokeCount = {invokeCount} (Min= {minInvokeCount}, Max = {maxInvokeCount})");

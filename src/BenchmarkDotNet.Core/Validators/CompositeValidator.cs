@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using BenchmarkDotNet.Running;
 
 namespace BenchmarkDotNet.Validators
 {
@@ -8,7 +7,8 @@ namespace BenchmarkDotNet.Validators
     {
         private static readonly IValidator[] MandatoryValidators = 
         {
-            BaselineValidator.FailOnError
+            BaselineValidator.FailOnError,
+            UnrollFactorValidator.Default
         };
 
         internal readonly IValidator[] Validators;
@@ -28,9 +28,9 @@ namespace BenchmarkDotNet.Validators
         /// </summary>
         public bool TreatsWarningsAsErrors => Validators.Any(validator => validator.TreatsWarningsAsErrors);
 
-        public IEnumerable<ValidationError> Validate(IList<Benchmark> benchmarks)
+        public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
         {
-            return Validators.SelectMany(validator => validator.Validate(benchmarks));
+            return Validators.SelectMany(validator => validator.Validate(validationParameters));
         }
     }
 }

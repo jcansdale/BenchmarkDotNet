@@ -23,6 +23,7 @@ namespace BenchmarkDotNet.Exporters
             {
                 logger.WriteLineInfo(infoLine);
             }
+            logger.WriteLineInfo(summary.AllRuntimes);
             logger.WriteLine();
 
             PrintTable(summary.Table, logger);

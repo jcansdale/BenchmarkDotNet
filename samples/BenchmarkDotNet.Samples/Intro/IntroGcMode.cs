@@ -8,26 +8,27 @@ namespace BenchmarkDotNet.Samples.Intro
 {
     [Config(typeof(Config))]
     [OrderProvider(SummaryOrderPolicy.FastestToSlowest)]
+    [MemoryDiagnoser]
     public class IntroGcMode
     {
         private class Config : ManualConfig
         {
             public Config()
             {
-                Add(Job.Dry.WithGcServer(true).WithGcForce(true).WithId("ServerForce"));
-                Add(Job.Dry.WithGcServer(true).WithGcForce(false).WithId("Server"));
-                Add(Job.Dry.WithGcServer(false).WithGcForce(true).WithId("Workstation"));
-                Add(Job.Dry.WithGcServer(false).WithGcForce(false).WithId("WorkstationForce"));
+                Add(Job.MediumRun.WithGcServer(true).WithGcForce(true).WithId("ServerForce"));
+                Add(Job.MediumRun.WithGcServer(true).WithGcForce(false).WithId("Server"));
+                Add(Job.MediumRun.WithGcServer(false).WithGcForce(true).WithId("Workstation"));
+                Add(Job.MediumRun.WithGcServer(false).WithGcForce(false).WithId("WorkstationForce"));
             }
         }
 
-        [Benchmark(Description = "new byte[10KB]")]
+        [Benchmark(Description = "new byte[10kB]")]
         public byte[] Allocate()
         {
             return new byte[10000];
         }
 
-        [Benchmark(Description = "stackalloc byte[10KB]")]
+        [Benchmark(Description = "stackalloc byte[10kB]")]
         public unsafe void AllocateWithStackalloc()
         {
             var array = stackalloc byte[10000];

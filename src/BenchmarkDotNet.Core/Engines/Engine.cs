@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Horology;
 using BenchmarkDotNet.Jobs;
-using BenchmarkDotNet.Mathematics;
+using BenchmarkDotNet.Portability;
 using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using JetBrains.Annotations;
@@ -15,122 +14,199 @@ namespace BenchmarkDotNet.Engines
     public class Engine : IEngine
     {
         public const int MinInvokeCount = 4;
-        public const int MinIterationTimeMs = 200;
+        public static readonly TimeInterval MinIterationTime = 200 * TimeInterval.Millisecond;
 
-        public Job TargetJob { get; set; } = Job.Default;
-        public long OperationsPerInvoke { get; set; } = 1;
-        public Action SetupAction { get; set; } = null;
-        public Action CleanupAction { get; set; } = null;
         public Action<long> MainAction { get; }
+        public Action Dummy1Action { get; }
+        public Action Dummy2Action { get; }
+        public Action Dummy3Action { get; }
         public Action<long> IdleAction { get; }
+        public Job TargetJob { get; }
+        public long OperationsPerInvoke { get; }
+        public Action SetupAction { get; }
+        public Action CleanupAction { get; }
+        public bool IsDiagnoserAttached { get; }
+        public IResolver Resolver { get; }
+
+        private IClock Clock { get; }
+        private bool ForceAllocations { get; }
+        private int UnrollFactor { get; }
+        private RunStrategy Strategy { get; }
+        private bool EvaluateOverhead { get; }
+        private int InvocationCount { get; }
 
         private readonly EnginePilotStage pilotStage;
         private readonly EngineWarmupStage warmupStage;
         private readonly EngineTargetStage targetStage;
+        private bool isJitted, isPreAllocated;
+        private int forcedFullGarbageCollections;
 
-        public IResolver Resolver { get; }
-
-        public Engine([NotNull] Action<long> idleAction, [NotNull] Action<long> mainAction)
+        internal Engine(Action dummy1Action, Action dummy2Action, Action dummy3Action, Action<long> idleAction, Action<long> mainAction, Job targetJob, Action setupAction, Action cleanupAction, long operationsPerInvoke, bool isDiagnoserAttached)
         {
             IdleAction = idleAction;
+            Dummy1Action = dummy1Action;
+            Dummy2Action = dummy2Action;
+            Dummy3Action = dummy3Action;
             MainAction = mainAction;
-            pilotStage = new EnginePilotStage(this);
-            warmupStage = new EngineWarmupStage(this);
-            targetStage = new EngineTargetStage(this);
+            TargetJob = targetJob;
+            SetupAction = setupAction;
+            CleanupAction = cleanupAction;
+            OperationsPerInvoke = operationsPerInvoke;
+            IsDiagnoserAttached = isDiagnoserAttached;
+
             Resolver = new CompositeResolver(BenchmarkRunnerCore.DefaultResolver, EngineResolver.Instance);
+
+            Clock = targetJob.ResolveValue(InfrastructureMode.ClockCharacteristic, Resolver);
+            ForceAllocations = targetJob.ResolveValue(GcMode.ForceCharacteristic, Resolver);
+            UnrollFactor = targetJob.ResolveValue(RunMode.UnrollFactorCharacteristic, Resolver);
+            Strategy = targetJob.ResolveValue(RunMode.RunStrategyCharacteristic, Resolver);
+            EvaluateOverhead = targetJob.ResolveValue(AccuracyMode.EvaluateOverheadCharacteristic, Resolver);
+            InvocationCount = targetJob.ResolveValue(RunMode.InvocationCountCharacteristic, Resolver);
+
+            warmupStage = new EngineWarmupStage(this);
+            pilotStage = new EnginePilotStage(this);
+            targetStage = new EngineTargetStage(this);
         }
 
-        // TODO: return all measurements
-        [UsedImplicitly]
-        public void Run()
+        public void PreAllocate()
         {
-            Jitting();
+            var list = new List<Measurement> { new Measurement(), new Measurement() };
+            list.Sort(); // provoke JIT, static ctors etc (was allocating 1740 bytes with first call)
+            if (TimeUnit.All == null || list[0].Nanoseconds != default(double))
+                throw new Exception("just use this things here to provoke static ctor");
+            isPreAllocated = true;
+        }
 
-            long invokeCount = 1;
-            IList<Measurement> idle = null;
+        public void Jitting()
+        {
+            // first signal about jitting is raised from auto-generated Program.cs, look at BenchmarkProgram.txt
+            Dummy1Action.Invoke();
+            MainAction.Invoke(1);
+            Dummy2Action.Invoke();
+            IdleAction.Invoke(1);
+            Dummy3Action.Invoke();
+            isJitted = true;
+        }
 
-            if (TargetJob.Run.RunStrategy.Resolve(Resolver) != RunStrategy.ColdStart)
+        public RunResults Run()
+        {
+            if (Strategy.NeedsJitting() != isJitted)
+                throw new Exception($"You must{(Strategy.NeedsJitting() ? "" : " not")} call Jitting() first (Strategy = {Strategy})!");
+            if (!isPreAllocated)
+                throw new Exception("You must call PreAllocate() first!");
+
+            long invokeCount = InvocationCount;
+            IReadOnlyList<Measurement> idle = null;
+
+            if (Strategy != RunStrategy.ColdStart)
             {
                 invokeCount = pilotStage.Run();
 
-                if (TargetJob.Accuracy.EvaluateOverhead.Resolve(Resolver))
+                if (EvaluateOverhead)
                 {
-                    warmupStage.RunIdle(invokeCount);
-                    idle = targetStage.RunIdle(invokeCount);
+                    warmupStage.RunIdle(invokeCount, UnrollFactor);
+                    idle = targetStage.RunIdle(invokeCount, UnrollFactor);
                 }
 
-                warmupStage.RunMain(invokeCount);
+                warmupStage.RunMain(invokeCount, UnrollFactor);
             }
-            var main = targetStage.RunMain(invokeCount);
 
-            PrintResult(idle, main);
-        }
+            // we enable monitoring after pilot & warmup, just to ignore the memory allocated by these runs
+            EnableMonitoring(); 
+            var initialGcStats = GcStats.ReadInitial(IsDiagnoserAttached);
 
-        private void Jitting()
-        {
-            SetupAction?.Invoke();
-            MainAction.Invoke(1);
-            IdleAction.Invoke(1);
-            CleanupAction?.Invoke();
-        }
+            var main = targetStage.RunMain(invokeCount, UnrollFactor);
 
-        private void PrintResult(IList<Measurement> idle, IList<Measurement> main)
-        {
-            // TODO: use Accuracy.RemoveOutliers
-            var overhead = idle == null ? 0.0 : new Statistics(idle.Select(m => m.Nanoseconds)).Median;
-            int resultIndex = 0;
-            foreach (var measurement in main)
-            {
-                var resultMeasurement = new Measurement(
-                    measurement.LaunchIndex,
-                    IterationMode.Result,
-                    ++resultIndex,
-                    measurement.Operations,
-                    Math.Max(0, measurement.Nanoseconds - overhead));
-                WriteLine(resultMeasurement.ToOutputLine());
-            }
-            WriteLine();
-        }
+            var finalGcStats = GcStats.ReadFinal(IsDiagnoserAttached);
+            var forcedCollections = GcStats.FromForced(forcedFullGarbageCollections);
+            var workGcHasDone = finalGcStats - forcedCollections - initialGcStats;
+
+            bool removeOutliers = TargetJob.ResolveValue(AccuracyMode.RemoveOutliersCharacteristic, Resolver);
+
+            return new RunResults(idle, main, removeOutliers, workGcHasDone);        }
 
         public Measurement RunIteration(IterationData data)
         {
             // Initialization
             long invokeCount = data.InvokeCount;
-            var totalOperations = invokeCount * OperationsPerInvoke;
+            int unrollFactor = data.UnrollFactor;
+            long totalOperations = invokeCount * OperationsPerInvoke;
             var action = data.IterationMode.IsIdle() ? IdleAction : MainAction;
 
-            // Setup
-            SetupAction?.Invoke();
             GcCollect();
 
             // Measure
-            var clock = TargetJob.Infra.Clock.Resolve(Resolver).Start();
-            action(invokeCount);
+            var clock = Clock.Start();
+            action(invokeCount / unrollFactor);
             var clockSpan = clock.Stop();
 
-            // Cleanup
-            CleanupAction?.Invoke();
             GcCollect();
 
             // Results
             var measurement = new Measurement(0, data.IterationMode, data.Index, totalOperations, clockSpan.GetNanoseconds());
-            WriteLine(measurement.ToOutputLine());
+            if (!IsDiagnoserAttached) WriteLine(measurement.ToOutputLine());
+
             return measurement;
         }
 
-        private void GcCollect() => GcCollect(TargetJob.Env.Gc.Force.Resolve(Resolver));
-
-        private static void GcCollect(bool isForce)
+        private void GcCollect()
         {
-            if (!isForce)
+            if (!ForceAllocations)
                 return;
 
+            ForceGcCollect();
+        }
+
+        private void ForceGcCollect()
+        {
             GC.Collect();
             GC.WaitForPendingFinalizers();
             GC.Collect();
+
+            forcedFullGarbageCollections += 2;
         }
 
-        public void WriteLine() => Console.WriteLine();
-        public void WriteLine(string line) => Console.WriteLine(line);
+        public void WriteLine(string text)
+        {
+            EnsureNothingIsPrintedWhenDiagnoserIsAttached();
+
+            Console.WriteLine(text);
+        }
+
+        public void WriteLine()
+        {
+            EnsureNothingIsPrintedWhenDiagnoserIsAttached();
+
+            Console.WriteLine();
+        }
+
+        private void EnableMonitoring()
+        {
+            if(!IsDiagnoserAttached) // it could affect the results, we do this in separate, diagnostics-only run
+                return;
+#if CLASSIC
+            if(RuntimeInformation.IsMono()) // Monitoring is not available in Mono, see http://stackoverflow.com/questions/40234948/how-to-get-the-number-of-allocated-bytes-in-mono
+                return;
+
+            AppDomain.MonitoringIsEnabled = true;
+#endif
+        }
+
+        private void EnsureNothingIsPrintedWhenDiagnoserIsAttached()
+        {
+            if (IsDiagnoserAttached)
+            {
+                throw new InvalidOperationException("to avoid memory allocations we must not print anything when diagnoser is still attached");
+            }
+        }
+
+        [UsedImplicitly]
+        public class Signals
+        {
+            public const string BeforeAnythingElse = "// BeforeAnythingElse";
+            public const string AfterSetup = "// AfterSetup";
+            public const string BeforeCleanup = "// BeforeCleanup";
+            public const string DiagnoserIsAttachedParam = "diagnoserAttached";
+        }
     }
 }

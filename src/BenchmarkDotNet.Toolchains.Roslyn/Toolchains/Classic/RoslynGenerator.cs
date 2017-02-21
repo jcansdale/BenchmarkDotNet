@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Extensions;
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Portability;
 
@@ -33,7 +34,7 @@ namespace BenchmarkDotNet.Toolchains.Classic
             list.Add("/target:exe");
             list.Add("/optimize");
             list.Add("/unsafe");
-            list.Add("/platform:" + benchmark.Job.Env.Platform.Resolve(resolver).ToConfig());
+            list.Add("/platform:" + benchmark.Job.ResolveValue(EnvMode.PlatformCharacteristic, resolver).ToConfig());
             list.Add("/appconfig:" + artifactsPaths.AppConfigPath.Escape());
             var references = GetAllReferences(benchmark).Select(assembly => assembly.Location.Escape());
             list.Add("/reference:" + string.Join(",", references));
@@ -49,7 +50,14 @@ namespace BenchmarkDotNet.Toolchains.Classic
             return benchmark.Target.Type.GetTypeInfo().Assembly
                 .GetReferencedAssemblies()
                 .Select(Assembly.Load)
-                .Concat(new[] { benchmark.Target.Type.GetTypeInfo().Assembly });
+                .Concat(
+                    new[]
+                    {
+                        benchmark.Target.Type.GetTypeInfo().Assembly, // this assembly does not has to have a reference to BenchmarkDotNet (e.g. custom framework for benchmarking that internally uses BenchmarkDotNet
+                        typeof(Benchmark).Assembly, // BenchmarkDotNet.Core
+                        typeof(RoslynToolchain).Assembly // BenchmarkDotNet.Toolchains.Roslyn
+                    })
+                .Distinct();
         }
 
         private static void DelteIfExists(string filePath)

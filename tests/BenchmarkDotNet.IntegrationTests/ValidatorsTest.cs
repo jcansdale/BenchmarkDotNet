@@ -4,6 +4,7 @@ using BenchmarkDotNet.Validators;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Exporters;
+using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Loggers;
 using Xunit;
 using Xunit.Abstractions;
@@ -16,6 +17,7 @@ namespace BenchmarkDotNet.IntegrationTests
 
         private readonly IExporter[] AllKnownExportersThatSupportExportToLog =
             {
+                MarkdownExporter.Atlassian,
                 MarkdownExporter.Console,
                 MarkdownExporter.Default,
                 MarkdownExporter.GitHub,
@@ -51,7 +53,7 @@ namespace BenchmarkDotNet.IntegrationTests
         {
             public bool TreatsWarningsAsErrors => true;
 
-            public IEnumerable<ValidationError> Validate(IList<Benchmark> benchmarks)
+            public IEnumerable<ValidationError> Validate(ValidationParameters input)
             {
                 yield return new ValidationError(true, "It just fails");
             }

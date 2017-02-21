@@ -7,6 +7,7 @@ using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Exporters;
+using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Exporters.Json;
 using BenchmarkDotNet.Validators;
 using BenchmarkDotNet.Extensions;
@@ -97,6 +98,7 @@ namespace BenchmarkDotNet.Configs
                 { "csvmeasurements", new[] { CsvMeasurementsExporter.Default } },
                 { "html", new[] { HtmlExporter.Default } },
                 { "markdown", new [] { MarkdownExporter.Default } },
+                { "atlassian", new[] { MarkdownExporter.Atlassian } },
                 { "stackoverflow", new[] { MarkdownExporter.StackOverflow } },
                 { "github", new[] { MarkdownExporter.GitHub } },
                 { "plain", new[] { PlainExporter.Default } },

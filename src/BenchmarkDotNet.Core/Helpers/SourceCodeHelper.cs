@@ -10,6 +10,8 @@ namespace BenchmarkDotNet.Core.Helpers
     {
         public static string ToSourceCode(object value)
         {
+            if (value == null)
+                return "null";
             if (value is bool)
                 return ((bool) value).ToLowerCase();
             if (value is string)
@@ -30,6 +32,8 @@ namespace BenchmarkDotNet.Core.Helpers
                 return "System.Activator.CreateInstance<" + value.GetType().GetCorrectTypeName() + ">()";
             if (value is TimeInterval)
                 return "new BenchmarkDotNet.Horology.TimeInterval(" + ToSourceCode(((TimeInterval)value).Nanoseconds) + ")";
+            if (value is IFormattable)
+                return ((IFormattable)value).ToString(null, CultureInfo.InvariantCulture);
             return value.ToString();
         }
     }

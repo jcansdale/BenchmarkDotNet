@@ -2,13 +2,16 @@
 using System.Collections.Generic;
 using System.Linq;
 using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Horology;
 
 namespace BenchmarkDotNet.Extensions
 {
     internal static class CommonExtensions
     {
+        const int BytesInKiloByte = 1000; // 1000 vs 1024 thing..
+
+        static readonly string[] SizeSuffixes = { "B", "kB", "MB", "GB", "TB" };
+
         public static List<T> ToSortedList<T>(this IEnumerable<T> values)
         {
             var list = new List<T>();
@@ -25,6 +28,18 @@ namespace BenchmarkDotNet.Extensions
             return $"{unitValue.ToStr("N4")} {unitName}";
         }
 
+        internal static string ToFormattedBytes(this long bytes)
+        {
+            int i;
+            double dblSByte = bytes;
+            for (i = 0; i < SizeSuffixes.Length && bytes >= BytesInKiloByte; i++, bytes /= BytesInKiloByte)
+            {
+                dblSByte = bytes / (double)BytesInKiloByte;
+            }
+
+            return string.Format(HostEnvironmentInfo.MainCultureInfo, "{0:0.##} {1}", dblSByte, SizeSuffixes[i]);
+        }
+
         public static string ToStr(this double value, string format = "0.##")
         {
             // Here we should manually create an object[] for string.Format
@@ -38,8 +53,8 @@ namespace BenchmarkDotNet.Extensions
             return string.Format(HostEnvironmentInfo.MainCultureInfo, $"{{0:{format}}}", args);
         }
 
-        public static bool IsNullOrEmpty<T>(this IList<T> value) => value == null || value.Count == 0;
-        public static bool IsEmpty<T>(this IList<T> value) => value.Count == 0;
+        public static bool IsNullOrEmpty<T>(this IReadOnlyCollection<T> value) => value == null || value.Count == 0;
+        public static bool IsEmpty<T>(this IReadOnlyCollection<T> value) => value.Count == 0;
         public static T Penult<T>(this IList<T> list) => list[list.Count - 2];
 
         public static bool IsOneOf<T>(this T value, params T[] values) => values.Contains(value);
@@ -55,5 +70,13 @@ namespace BenchmarkDotNet.Extensions
 
         public static int RoundToInt(this double x) => (int) Math.Round(x);
         public static long RoundToLong(this double x) => (long) Math.Round(x);
+
+        internal static void ForEach<T>(this IList<T> source, Action<T> command)
+        {
+            foreach (var item in source)
+            {
+                command(item);
+            }
+        }
     }
 }

@@ -1,4 +1,8 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
+using BenchmarkDotNet.Toolchains;
 
 namespace BenchmarkDotNet.Characteristics
 {
@@ -9,16 +13,22 @@ namespace BenchmarkDotNet.Characteristics
         public static readonly CharacteristicSetPresenter Folder = new FolderPresenter();
         public static readonly CharacteristicSetPresenter SourceCode = new SourceCodePresenter();
 
-        public abstract string ToPresentation(CharacteristicSet set);
+        public abstract string ToPresentation(CharacteristicObject obj);
+
+        protected virtual IEnumerable<Characteristic> GetPresentableCharacteristics(CharacteristicObject obj, bool includeIgnoreOnApply = false) =>
+            obj
+                .GetCharacteristicsWithValues()
+                .Where(c => c.IsPresentableCharacteristic(includeIgnoreOnApply));
 
         private class DefaultPresenter : CharacteristicSetPresenter
         {
             private const string Separator = "&";
             private static readonly CharacteristicPresenter CharacteristicPresenter = CharacteristicPresenter.DefaultPresenter;
 
-            public override string ToPresentation(CharacteristicSet set)
+            public override string ToPresentation(CharacteristicObject obj)
             {
-                var values = set.GetValues().Where(c => !c.IsDefault).Select(c => c.Id + "=" + CharacteristicPresenter.ToPresentation(c));
+                var values = GetPresentableCharacteristics(obj)
+                    .Select(c => c.FullId + "=" + CharacteristicPresenter.ToPresentation(obj, c));
                 return string.Join(Separator, values);
             }
         }
@@ -29,12 +39,10 @@ namespace BenchmarkDotNet.Characteristics
             private const string EqualsSeparator = "-";
             private static readonly CharacteristicPresenter CharacteristicPresenter = CharacteristicPresenter.FolderPresenter;
 
-            public override string ToPresentation(CharacteristicSet set)
+            public override string ToPresentation(CharacteristicObject obj)
             {
-                var values = set.
-                    GetValues().
-                    Where(c => !c.IsDefault).
-                    Select(c => c.GetDisplayId() + EqualsSeparator + CharacteristicPresenter.ToPresentation(c));
+                var values = GetPresentableCharacteristics(obj)
+                    .Select(c => c.Id + EqualsSeparator + CharacteristicPresenter.ToPresentation(obj, c));
                 return string.Join(Separator, values);
             }
         }
@@ -44,23 +52,31 @@ namespace BenchmarkDotNet.Characteristics
             private const string Separator = ", ";
             private static readonly CharacteristicPresenter CharacteristicPresenter = CharacteristicPresenter.DefaultPresenter;
 
-            public override string ToPresentation(CharacteristicSet set)
+            public override string ToPresentation(CharacteristicObject obj)
             {
-                var values = set.GetValues().Where(c => !c.IsDefault).Select(c => c.GetDisplayId() + "=" + CharacteristicPresenter.ToPresentation(c));
+                var values = GetPresentableCharacteristics(obj)
+                    .Select(c => c.Id + "=" + CharacteristicPresenter.ToPresentation(obj, c));
                 return string.Join(Separator, values);
             }
         }
 
         private class SourceCodePresenter : CharacteristicSetPresenter
         {
-            private const string Separator = ", ";
+            private const string Separator = "; ";
             private static readonly CharacteristicPresenter CharacteristicPresenter = CharacteristicPresenter.SourceCodePresenter;
-
-            public override string ToPresentation(CharacteristicSet set)
+            private static readonly HashSet<Type> NonExportableTypes = new HashSet<Type>
             {
-                var values = set.GetValues().Where(c => !c.IsDefault).Select(c => CharacteristicPresenter.ToPresentation(c));
-                return "new CharacteristicSet(" + string.Join(Separator, values) + ")";
-            }
+                typeof(IToolchain) // there is no need to set toolchain in child process, it was causing parameterless ctor requirement for all IToolchain implementations
+            };
+
+            public override string ToPresentation(CharacteristicObject obj)
+                => string.Join(Separator, 
+                        GetPresentableCharacteristics(obj, includeIgnoreOnApply: true)
+                            .Select(c => CharacteristicPresenter.ToPresentation(obj, c)));
+
+            protected override IEnumerable<Characteristic> GetPresentableCharacteristics(CharacteristicObject obj, bool includeIgnoreOnApply = false)
+                => base.GetPresentableCharacteristics(obj, includeIgnoreOnApply)
+                       .Where(characteristic => !NonExportableTypes.Contains(characteristic.CharacteristicType));
         }
     }
 }

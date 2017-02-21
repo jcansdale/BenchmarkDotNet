@@ -5,9 +5,10 @@
     /// </summary>
     public interface IResolver
     {
-        T Resolve<T>(ICharacteristic<T> characteristic);
+        bool CanResolve(Characteristic characteristic);
 
-        bool CanResolve(ICharacteristic characteristic);
-        object Resolve(ICharacteristic characteristic);
+        object Resolve(CharacteristicObject obj, Characteristic characteristic);
+
+        T Resolve<T>(CharacteristicObject obj, Characteristic<T> characteristic);
     }
 }

@@ -1,13 +1,14 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
-using BenchmarkDotNet.Engines;
+using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Jobs;
+using BenchmarkDotNet.Reports;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Tests.Loggers;
 using Xunit;
@@ -15,42 +16,6 @@ using Xunit.Abstractions;
 
 namespace BenchmarkDotNet.IntegrationTests
 {
-    [Config(typeof(DiagnoserConfig))]
-    public class ListEnumeratorsBenchmarks
-    {
-        private List<int> list;
-
-        [Setup]
-        public void SetUp()
-        {
-            list = Enumerable.Range(0, 100).ToList();
-        }
-
-        [Benchmark]
-        public int ListStructEnumerator()
-        {
-            int sum = 0;
-            foreach (var i in list)
-            {
-                sum += i;
-            }
-            return sum;
-        }
-
-        [Benchmark]
-        public int ListObjectEnumerator()
-        {
-            int sum = 0;
-            foreach (var i in (IEnumerable<int>)list)
-            {
-                sum += i;
-            }
-            return sum;
-        }
-    }
-
-#if !CORE
-    // this class is not compiled for CORE because it is using Diagnosers that currently do not support Core
     public class MemoryDiagnoserTests
     {
         private readonly ITestOutputHelper output;
@@ -60,50 +25,120 @@ namespace BenchmarkDotNet.IntegrationTests
             output = outputHelper;
         }
 
-        [Fact(Skip = "Temporarily suppressed, see https://github.com/PerfDotNet/BenchmarkDotNet/issues/208")]
-        public void MemoryDiagnoserTracksHeapMemoryAllocation()
+        public class AccurateAllocations
         {
-            var benchmarks = BenchmarkConverter.TypeToBenchmarks(typeof(ListEnumeratorsBenchmarks));
-            var memoryDiagnoser = new Diagnostics.Windows.MemoryDiagnoser();
+            [Benchmark]public void Empty() { }
+            [Benchmark]public byte[] EightBytes() => new byte[8];
+            [Benchmark]public byte[] SixtyFourBytes() => new byte[64];
+        }
 
-            var summary = BenchmarkRunner
-                .Run(benchmarks,
-                    ManualConfig.CreateEmpty().
-                        With(Job.Dry.With(Runtime.Core).With(RunStrategy.Throughput).WithWarmupCount(1).WithTargetCount(1)).
-                        With(DefaultConfig.Instance.GetLoggers().ToArray()).
-                        With(DefaultColumnProviders.Instance).
-                        With(memoryDiagnoser).
-                        With(new OutputLogger(output)));
-
-            var gcCollectionColumns = memoryDiagnoser.GetColumnProvider().GetColumns(null).OfType<Diagnostics.Windows.MemoryDiagnoser.GCCollectionColumn>().ToArray();
-            var listStructEnumeratorBenchmarks = benchmarks.Where(benchmark => benchmark.DisplayInfo.Contains("ListStructEnumerator"));
-            var listObjectEnumeratorBenchmarks = benchmarks.Where(benchmark => benchmark.DisplayInfo.Contains("ListObjectEnumerator"));
-            const int gen0Index = 0;
-
-            foreach (var listStructEnumeratorBenchmark in listStructEnumeratorBenchmarks)
+        [Fact]
+        public void MemoryDiagnoserIsAccurate()
+        {
+            long objectAllocationOverhead = IntPtr.Size * 3; // pointer to method table + object header word + pointer to the object 
+            AssertAllocations(typeof(AccurateAllocations), 200, new Dictionary<string, Predicate<long>>
             {
-                var structEnumeratorGen0Collections = gcCollectionColumns[gen0Index].GetValue(
-                    summary,
-                    listStructEnumeratorBenchmark);
+                { "Empty", allocatedBytes => allocatedBytes == 0 },
+                { "EightBytes", allocatedBytes => allocatedBytes == 8 + objectAllocationOverhead },
+                { "SixtyFourBytes", allocatedBytes => allocatedBytes == 64 + objectAllocationOverhead },
+            });
+        }
 
-                Assert.Equal("-", structEnumeratorGen0Collections);
+        public class AllocatingSetupAndCleanup
+        {
+            private List<int> list;
+
+            [Benchmark]public void AllocateNothing() { }
+
+            [Setup]public void AllocatingSetUp() => AllocateUntilGcWakesUp();
+            [Cleanup]public void AllocatingCleanUp() => AllocateUntilGcWakesUp();
+
+            private void AllocateUntilGcWakesUp()
+            {
+                int initialCollectionCount = GC.CollectionCount(0);
+
+                while (initialCollectionCount == GC.CollectionCount(0))
+                    list = Enumerable.Range(0, 100).ToList();
             }
+        }
 
-            foreach (var listObjectEnumeratorBenchmark in listObjectEnumeratorBenchmarks)
+        [Fact]
+        public void MemoryDiagnoserDoesNotIncludeAllocationsFromSetupAndCleanup()
+        {
+            AssertAllocations(typeof(AllocatingSetupAndCleanup), 100, new Dictionary<string, Predicate<long>>
             {
-                var gen0Str = gcCollectionColumns[gen0Index].GetValue(
-                    summary,
-                    listObjectEnumeratorBenchmark);
+                { "AllocateNothing",  allocatedBytes => allocatedBytes == 0 }
+            });
+        }
 
-                double gen0Value;
-                if (double.TryParse(gen0Str, NumberStyles.Number, HostEnvironmentInfo.MainCultureInfo, out gen0Value))
-                    Assert.True(gen0Value > 0);
-                else
+        public class NoAllocationsAtAll
+        {
+            [Benchmark]public void EmptyMethod() { }
+        }
+
+        [Fact]
+        public void EngineShouldNotInterfereAllocationResults()
+        {
+            AssertAllocations(typeof(NoAllocationsAtAll), 100, new Dictionary<string, Predicate<long>>
+            {
+                { "EmptyMethod",  allocatedBytes => allocatedBytes == 0 }
+            });
+        }
+
+        private void AssertAllocations(Type benchmarkType, int targetCount,
+            Dictionary<string, Predicate<long>> benchmarksAllocationsValidators)
+        {
+            var memoryDiagnoser = MemoryDiagnoser.Default;
+            var config = CreateConfig(memoryDiagnoser, targetCount);
+            var benchmarks = BenchmarkConverter.TypeToBenchmarks(benchmarkType, config);
+
+            var summary = BenchmarkRunner.Run((Benchmark[])benchmarks, config);
+
+            var allocationColumn = GetColumns<MemoryDiagnoser.AllocationColumn>(memoryDiagnoser, summary).Single();
+
+            foreach (var benchmarkAllocationsValidator in benchmarksAllocationsValidators)
+            {
+                var allocatingBenchmarks = benchmarks.Where(benchmark => benchmark.DisplayInfo.Contains(benchmarkAllocationsValidator.Key));
+
+                foreach (var benchmark in allocatingBenchmarks)
                 {
-                    Assert.True(false, $"Can't parse '{gen0Str}'");
+                    var allocations = allocationColumn.GetValue(summary, benchmark);
+
+                    AssertParsed(allocations, benchmarkAllocationsValidator.Value);
                 }
             }
         }
+
+        private IConfig CreateConfig(IDiagnoser diagnoser, int targetCount)
+        {
+            return ManualConfig.CreateEmpty()
+                .With(
+                    Job.Dry
+                        .WithLaunchCount(1)
+                        .WithWarmupCount(1)
+                        .WithTargetCount(targetCount)
+                        .WithInvocationCount(100)
+                        .WithGcForce(false))
+                .With(DefaultConfig.Instance.GetLoggers().ToArray())
+                .With(DefaultColumnProviders.Instance)
+                .With(diagnoser)
+                .With(new OutputLogger(output));
+        }
+
+        private static T[] GetColumns<T>(MemoryDiagnoser memoryDiagnoser, Summary summary)
+            => memoryDiagnoser.GetColumnProvider().GetColumns(summary).OfType<T>().ToArray();
+
+        private static void AssertParsed(string text, Predicate<long> condition)
+        {
+            long value;
+            if (long.TryParse(text.Replace(" B", string.Empty), NumberStyles.Number, HostEnvironmentInfo.MainCultureInfo, out value))
+            {
+                Assert.True(condition(value), $"Failed for value {value}");
+            }
+            else
+            {
+                Assert.True(false, $"Can't parse '{text}'");
+            }
+        }
     }
-#endif
 }

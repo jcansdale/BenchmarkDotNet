@@ -1,5 +1,5 @@
-﻿using BenchmarkDotNet.Characteristics;
-using BenchmarkDotNet.Horology;
+﻿using System;
+using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Reports;
 
@@ -15,17 +15,18 @@ namespace BenchmarkDotNet.Engines
         }
 
         protected Job TargetJob => engine.TargetJob;
-        protected AccuracyMode TargetAccuracy => TargetJob.Accuracy;
-        protected IClock TargetClock => engine.Resolver.Resolve(TargetJob.Infra.Clock);
-        protected IResolver Resolver => engine.Resolver;
+        protected bool IsDiagnoserAttached => engine.IsDiagnoserAttached;
 
-        protected Measurement RunIteration(IterationMode mode, int index, long invokeCount)
+        protected Measurement RunIteration(IterationMode mode, int index, long invokeCount, int unrollFactor)
         {
-            return engine.RunIteration(new IterationData(mode, index, invokeCount));
+            if (invokeCount % unrollFactor != 0)
+                throw new ArgumentOutOfRangeException($"InvokeCount({invokeCount}) should be a multiple of UnrollFactor({unrollFactor}).");
+            return engine.RunIteration(new IterationData(mode, index, invokeCount, unrollFactor));
         }
 
-        protected void WriteLine() => engine.WriteLine();
+        protected bool ShouldRunAuto(RunMode runMode, Characteristic<int> iterationCount) => !runMode.HasValue(iterationCount);
 
+        protected void WriteLine() => engine.WriteLine();
         protected void WriteLine(string line) => engine.WriteLine(line);
     }
 }

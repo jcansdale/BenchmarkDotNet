@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BenchmarkDotNet.Extensions;
-using BenchmarkDotNet.Running;
 
 namespace BenchmarkDotNet.Validators
 {
@@ -18,15 +17,15 @@ namespace BenchmarkDotNet.Validators
 
         public bool TreatsWarningsAsErrors { get; }
 
-        public IEnumerable<ValidationError> Validate(IList<Benchmark> benchmarks)
+        public IEnumerable<ValidationError> Validate(ValidationParameters validationParameters)
         {
-            foreach (var group in benchmarks.GroupBy(benchmark => benchmark.Target.Type.GetTypeInfo().Assembly))
+            foreach (var group in validationParameters.Benchmarks.GroupBy(benchmark => benchmark.Target.Type.GetTypeInfo().Assembly))
             {
                 foreach (var referencedAssemblyName in group.Key.GetReferencedAssemblies())
                 {
                     var referencedAssembly = Assembly.Load(referencedAssemblyName);
 
-                    if (referencedAssembly.IsJITOptimizationDisabled().IsTrue())
+                    if (referencedAssembly.IsJitOptimizationDisabled().IsTrue())
                     {
                         yield return new ValidationError(
                             TreatsWarningsAsErrors,
@@ -34,7 +33,7 @@ namespace BenchmarkDotNet.Validators
                     }
                 }
 
-                if (group.Key.IsJITOptimizationDisabled().IsTrue())
+                if (group.Key.IsJitOptimizationDisabled().IsTrue())
                 {
                     yield return new ValidationError(
                         TreatsWarningsAsErrors,

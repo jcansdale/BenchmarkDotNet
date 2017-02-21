@@ -4,7 +4,7 @@
 
 Create new console application and install the [BenchmarkDotNet](https://www.nuget.org/packages/BenchmarkDotNet/) NuGet package. We support:
 
-* *Projects:* Classic (`*.csproj`), Modern (`*.xproj`/`project.json`)
+* *Projects:* `*.csproj`, `*.xproj`/`project.json`
 * *Runtimes:* Full .NET Framework, .NET Core, Mono
 * *OS:* Windows, Linux, MacOS
 * *Languages:* C#, F#, VB
@@ -47,21 +47,17 @@ Notice, that you should use only the `Release` configuration for your benchmarks
 ## Benchmark results
 
 ```
-Host Process Environment Information:
-BenchmarkDotNet-Dev.Core=v0.9.8.0
-OS=Microsoft Windows NT 6.2.9200.0
+BenchmarkDotNet=v0.10.1, OS=Microsoft Windows NT 6.2.9200.0
 Processor=Intel(R) Core(TM) i7-4702MQ CPU 2.20GHz, ProcessorCount=8
-Frequency=2143477 ticks, Resolution=466.5317 ns, Timer=TSC
-CLR=MS.NET 4.0.30319.42000, Arch=32-bit RELEASE
-GC=Concurrent Workstation
-JitModules=clrjit-v4.6.1586.0
+Frequency=2143476 Hz, Resolution=466.5319 ns, Timer=TSC
+  [Host]     : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1586.0
+  DefaultJob : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1586.0
 
-Type=Md5VsSha256  Mode=Throughput
 
- Method |      Median |    StdDev |
-------- |------------ |---------- |
- Sha256 | 129.9503 us | 2.0627 us |
-    Md5 |  26.1774 us | 0.6362 us |
+| Method |        Mean |    StdDev | Allocated |
+|------- |------------ |---------- |---------- |
+| Sha256 | 130.5169 us | 1.8489 us |     188 B |
+|    Md5 |  25.8010 us | 0.1757 us |     113 B |
 ```
 
 ## Jobs
@@ -73,16 +69,29 @@ You can check several environments at once. For example, you can compare perform
 public class Md5VsSha256
 ```
 
- Method | Toolchain | Runtime |      Median |    StdDev |
-------- |---------- |-------- |------------ |---------- |
-    Md5 |       Clr |     Clr |  25.6889 us | 1.1810 us |
- Sha256 |       Clr |     Clr | 129.6621 us | 3.2028 us |
-    Md5 |      Core |    Core |  24.0038 us | 0.1683 us |
- Sha256 |      Core |    Core |  57.5698 us | 0.5385 us |
-    Md5 |      Mono |    Mono |  53.8173 us | 0.4953 us |
- Sha256 |      Mono |    Mono | 205.7487 us | 2.8628 us |
+Example of the result:
 
-There are a lot of predefined jobs which you can use. For example, you can compare `LegacyJitX86` vs `LegacyJitX64` vs `RyuJITx64`:
+```ini
+BenchmarkDotNet=v0.10.1, OS=Microsoft Windows NT 6.2.9200.0
+Processor=Intel(R) Core(TM) i7-4702MQ CPU 2.20GHz, ProcessorCount=8
+Frequency=2143476 Hz, Resolution=466.5319 ns, Timer=TSC
+  [Host] : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1586.0
+  Clr    : Clr 4.0.30319.42000, 64bit RyuJIT-v4.6.1586.0
+  Core   : .NET Core 4.6.24628.01, 64bit RyuJIT
+  Mono   : Mono 4.6.2 (Visual Studio built mono), 64bit
+
+
+ Method |  Job | Runtime |        Mean |    StdDev | Allocated |
+------- |----- |-------- |------------ |---------- |---------- |
+ Sha256 |  Clr |     Clr | 130.5169 us | 1.8489 us |     188 B |
+    Md5 |  Clr |     Clr |  25.8010 us | 0.1757 us |     113 B |
+ Sha256 | Core |    Core |  57.6534 us | 0.8210 us |     113 B |
+    Md5 | Core |    Core |  24.2675 us | 0.0687 us |      80 B |
+ Sha256 | Mono |    Mono | 182.8917 us | 7.5126 us |       N/A |
+    Md5 | Mono |    Mono |  46.0745 us | 1.4978 us |       N/A |
+```
+
+There are a lot of predefined jobs which you can use. For example, you can compare `LegacyJitX86` vs `LegacyJitX64` vs `RyuJitX64`:
 
 ```cs
 [LegacyJitX86Job, LegacyJitX64Job, RyuJitX64Job]
@@ -98,18 +107,17 @@ public class Md5VsSha256
     {
         public Config()
         {
-            Add(Job.Default.
-                With(Platform.X86).
-                With(Jit.LegacyJit).
-                With(Runtime.Clr).
-                WithLaunchCount(3).
-                WithWarmupCount(5).
-                WithTargetCount(10));
+            Add(new Job(EnvMode.LegacyJitX86, EnvMode.Clr, RunMode.Dry)
+                {
+                    Env = { Runtime = Runtime.Core },
+                    Run = { LaunchCount = 3, WarmupCount = 5, TargetCount = 10 },
+                    Accuracy = { MaxStdErrRelative = 0.01 }
+                }));
         }
     }
 ```
 
-Read more:  [Jobs](Configuration/Jobs.htm), [Configs](Configuration/Configs.htm)
+Read more:  [Jobs](Configs/Jobs.htm), [Configs](Configs/Configs.htm)
 
 
 ## Columns
@@ -121,14 +129,14 @@ You can also add custom columns to the summary table:
 public class Md5VsSha256
 ```
 
- Method |      Median |    StdDev |         Min |         Max |
-------- |------------ |---------- |------------ |------------ |
- Sha256 | 131.3200 us | 4.6744 us | 129.8216 us | 147.7630 us |
-    Md5 |  26.2847 us | 0.4424 us |  25.8442 us |  27.4258 us |
+| Method | Median      | StdDev    | Min         | Max         |      |
+| ------ | ----------- | --------- | ----------- | ----------- | ---- |
+| Sha256 | 131.3200 us | 4.6744 us | 129.8216 us | 147.7630 us |      |
+| Md5    | 26.2847 us  | 0.4424 us | 25.8442 us  | 27.4258 us  |      |
 
 Of course, you can define own columns based on full benchmark summary.
 
-Read more:  [Columns](Configuration/Columns.htm)
+Read more:  [Columns](Configs/Columns.htm)
 
 ## Exporters
 
@@ -143,7 +151,7 @@ If you have installed R, `RPlotExporter` will generate a lot of nice plots:
 
 ![Overview-RPlot.png](Images/Overview-RPlot.png)
 
-Read more:  [Exporters](Configuration/Exporters.htm)
+Read more:  [Exporters](Configs/Exporters.htm)
 
 ## Baseline
 
@@ -165,12 +173,12 @@ public class Sleeps
 
 As a result, you will have additional column in the summary table:
 
-  Method |      Median |    StdDev | Scaled
--------- |------------ |---------- |-------
- Time100 | 100.2640 ms | 0.1238 ms |   1.00
- Time150 | 150.2093 ms | 0.1034 ms |   1.50
-  Time50 |  50.2509 ms | 0.1153 ms |   0.50
-  
+| Method  | Median      | StdDev    | Scaled |
+| ------- | ----------- | --------- | ------ |
+| Time100 | 100.2640 ms | 0.1238 ms | 1.00   |
+| Time150 | 150.2093 ms | 0.1034 ms | 1.50   |
+| Time50  | 50.2509 ms  | 0.1153 ms | 0.50   |
+
 Read more:  [Baseline](Advanced/Baseline.htm)
 
 ## Params
@@ -194,12 +202,12 @@ public class IntroParams
 }
 ```
 
-   Method  |      Median |    StdDev |   A |  B
----------- |------------ |---------- |---- |---
- Benchmark | 115.3325 ms | 0.0242 ms | 100 | 10
- Benchmark | 125.3282 ms | 0.0245 ms | 100 | 20
- Benchmark | 215.3024 ms | 0.0375 ms | 200 | 10
- Benchmark | 225.2710 ms | 0.0434 ms | 200 | 20
+| Method    | Median      | StdDev    | A    | B    |
+| --------- | ----------- | --------- | ---- | ---- |
+| Benchmark | 115.3325 ms | 0.0242 ms | 100  | 10   |
+| Benchmark | 125.3282 ms | 0.0245 ms | 100  | 20   |
+| Benchmark | 215.3024 ms | 0.0375 ms | 200  | 10   |
+| Benchmark | 225.2710 ms | 0.0434 ms | 200  | 20   |
 
 Read more:  [Params](Advanced/Params.htm)
 
@@ -245,16 +253,24 @@ End Class
 
 ## Diagnostics
 
-A **diagnoser** can attach to your benchmark and get some useful info. There is a separated package with diagnosers for Windows ([BenchmarkDotNet.Diagnostics.Windows](https://www.nuget.org/packages/BenchmarkDotNet.Diagnostics.Windows/)). The current Diagnosers are: *GC and Memory Allocation* (`MemoryDiagnoser`) and *JIT Inlining Events* (`InliningDiagnoser`).
+A **diagnoser** can attach to your benchmark and get some useful info.
 
-Below is a sample output from the `GC and Memory Allocation` diagnoser, note the extra columns on the right-hand side (`Gen 0`, `Gen 1`, `Gen 2` and `Bytes Allocated/Op`):
+The current Diagnosers are:
 
-    Method |  Lookup |     Median |    StdDev | Scaled |    Gen 0 | Gen 1 | Gen 2 | Bytes Allocated/Op |
----------- |-------- |----------- |---------- |------- |--------- |------ |------ |------------------- |
-      LINQ | Testing | 49.1154 ns | 0.5301 ns |   2.48 | 1,526.00 |     - |     - |              25.21 |
- Iterative | Testing | 19.8040 ns | 0.0456 ns |   1.00 |        - |     - |     - |               0.00 |
- 
-Read more:  [Diagnosers](Configuration/Diagnosers.htm)
+- GC and Memory Allocation (`MemoryDiagnoser`) which is cross platform, built-in and enabled by default.
+- JIT Inlining Events (`InliningDiagnoser`). You can find this diagnoser in a separated package with diagnosers for Windows (`BenchmarkDotNet.Diagnostics.Windows`): [![NuGet](https://img.shields.io/nuget/v/BenchmarkDotNet.svg)](https://www.nuget.org/packages/BenchmarkDotNet.Diagnostics.Windows/)
+
+
+Below is a sample output from the `MemoryDiagnoser`, note the extra columns on the right-hand side (`Gen 0` and `Allocated`):
+
+```
+    Method |       Mean |    StdDev |  Gen 0 | Allocated |
+---------- |----------- |---------- |------- |---------- |
+ Iterative | 31.0739 ns | 0.1091 ns |      - |       0 B |
+      LINQ | 83.0435 ns | 1.0103 ns | 0.0069 |      32 B | 
+```
+
+Read more:  [Diagnosers](Configs/Diagnosers.htm)
 
 ## BenchmarkRunner
 

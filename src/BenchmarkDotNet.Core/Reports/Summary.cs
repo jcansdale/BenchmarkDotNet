@@ -24,6 +24,7 @@ namespace BenchmarkDotNet.Reports
         public SummaryTable Table { get; }
         public TimeSpan TotalTime { get; }
         public ValidationError[] ValidationErrors { get; }
+        public string AllRuntimes { get; }
 
         private readonly Dictionary<Job, string> shortInfos;
         private readonly Lazy<Job[]> jobs;
@@ -54,6 +55,7 @@ namespace BenchmarkDotNet.Reports
             Table = new SummaryTable(this);
             shortInfos = new Dictionary<Job, string>();
             jobs = new Lazy<Job[]>(() => Benchmarks.Select(b => b.Job).ToArray());
+            AllRuntimes = BuildAllRuntimes();
         }
 
         private Summary(string title, HostEnvironmentInfo hostEnvironmentInfo, IConfig config, string resultsDirectoryPath, TimeSpan totalTime, ValidationError[] validationErrors, Benchmark[] benchmarks, BenchmarkReport[] reports)
@@ -80,5 +82,33 @@ namespace BenchmarkDotNet.Reports
             return new Summary(title, hostEnvironmentInfo, config, resultsDirectoryPath, TimeSpan.Zero, validationErrors, benchmarks, new BenchmarkReport[0]);
         }
 
+        private string BuildAllRuntimes()
+        {
+            var jobRuntimes = new Dictionary<string, string>(); // JobId -> Runtime
+            var orderedJobs = new List<string>();
+
+            orderedJobs.Add("[Host]");
+            jobRuntimes["[Host]"] = HostEnvironmentInfo.GetRuntimeInfo();
+
+            foreach (var benchmarkReport in Reports)
+            {
+                string runtime = benchmarkReport.GetRuntimeInfo();
+                if (runtime != null)
+                {
+                    string jobId = benchmarkReport.Benchmark.Job.ResolvedId;
+
+                    if (!jobRuntimes.ContainsKey(jobId))
+                    {
+                        orderedJobs.Add(jobId);
+                        jobRuntimes[jobId] = runtime;
+                    }
+                }
+            }
+
+            int jobIdMaxWidth = orderedJobs.Max(j => j.ToString().Length);
+
+            var lines = orderedJobs.Select(jobId => $"  {jobId.PadRight(jobIdMaxWidth)} : {jobRuntimes[jobId]}");
+            return string.Join(Environment.NewLine, lines);
+        }
     }
 }

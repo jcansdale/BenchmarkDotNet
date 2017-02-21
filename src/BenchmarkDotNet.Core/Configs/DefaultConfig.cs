@@ -7,6 +7,7 @@ using BenchmarkDotNet.Analysers;
 using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Exporters;
+using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Loggers;
 using BenchmarkDotNet.Order;
@@ -41,12 +42,14 @@ namespace BenchmarkDotNet.Configs
         public IEnumerable<IAnalyser> GetAnalysers()
         {
             yield return EnvironmentAnalyser.Default;
+            yield return OutliersAnalyser.Default;
         }
 
         public IEnumerable<IValidator> GetValidators()
         {
             yield return BaselineValidator.FailOnError;
             yield return JitOptimizationsValidator.DontFailOnError;
+            yield return UnrollFactorValidator.Default;
         }
 
         public IEnumerable<Job> GetJobs() => Enumerable.Empty<Job>();
@@ -57,7 +60,10 @@ namespace BenchmarkDotNet.Configs
 
         public bool KeepBenchmarkFiles => false;
 
-        public IEnumerable<IDiagnoser> GetDiagnosers() => Enumerable.Empty<IDiagnoser>();
+        public IEnumerable<IDiagnoser> GetDiagnosers()
+        {
+            yield return MemoryDiagnoser.Default;
+        }
 
         // Make the Diagnosers lazy-loaded, so they are only instantiated if neededs
         public static readonly Lazy<IDiagnoser[]> LazyLoadedDiagnosers =
@@ -83,7 +89,7 @@ namespace BenchmarkDotNet.Configs
                 {
                     return new[]
                     {
-                        GetDiagnoser(loadedAssembly, "BenchmarkDotNet.Diagnostics.Windows.MemoryDiagnoser"),
+                        MemoryDiagnoser.Default,
                         GetDiagnoser(loadedAssembly, "BenchmarkDotNet.Diagnostics.Windows.InliningDiagnoser"),
                     };
                 }

@@ -1,5 +1,4 @@
 ﻿using System;
-using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 
@@ -9,9 +8,9 @@ namespace BenchmarkDotNet.Toolchains
     {
         internal static IToolchain GetToolchain(this Job job)
         {
-            return job.Infra.Toolchain.IsDefault
-                ? GetToolchain(job.Env.Runtime.Resolve(EnvResolver.Instance))
-                : job.Infra.Toolchain.SpecifiedValue;
+            return job.HasValue(InfrastructureMode.ToolchainCharacteristic)
+                ? job.Infrastructure.Toolchain
+                : GetToolchain(job.ResolveValue(EnvMode.RuntimeCharacteristic, EnvResolver.Instance));
         }
 
         internal static IToolchain GetToolchain(this Runtime runtime)
@@ -22,7 +21,7 @@ namespace BenchmarkDotNet.Toolchains
                 case Runtime.Mono:
                     return Classic.ClassicToolchain.Instance;
                 case Runtime.Core:
-                    return Core.CoreToolchain.Instance;
+                    return Core.CoreToolchain.Current.Value;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(runtime), runtime, "Runtime not supported");
             }

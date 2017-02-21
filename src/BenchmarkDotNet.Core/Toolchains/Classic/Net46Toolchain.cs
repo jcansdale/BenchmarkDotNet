@@ -1,5 +1,6 @@
 ﻿using BenchmarkDotNet.Extensions;
 using BenchmarkDotNet.Toolchains.DotNetCli;
+using JetBrains.Annotations;
 
 namespace BenchmarkDotNet.Toolchains.Classic
 {
@@ -11,7 +12,8 @@ namespace BenchmarkDotNet.Toolchains.Classic
         // * from 4.6 you can target < 4.6
         private const string TargetFrameworkMoniker = "net46";
 
-        internal Net46Toolchain() : base(
+        [PublicAPI]
+        public Net46Toolchain() : base(
             "Classic",
             new DotNetCliGenerator(
                 TargetFrameworkMoniker,

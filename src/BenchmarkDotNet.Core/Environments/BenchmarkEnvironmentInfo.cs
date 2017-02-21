@@ -7,6 +7,9 @@ namespace BenchmarkDotNet.Environments
 {
     public class BenchmarkEnvironmentInfo
     {
+        internal const string RuntimeInfoPrefix = "Runtime=";
+        internal const string GcInfoPrefix = "GC=";
+
         public string Architecture { get; }
 
         public string Configuration { get; }
@@ -16,6 +19,8 @@ namespace BenchmarkDotNet.Environments
         public bool HasAttachedDebugger => Debugger.IsAttached;
 
         public bool HasRyuJit { get; }
+
+        public string JitInfo { get; }
 
         public bool IsServerGC { get; }
 
@@ -27,6 +32,7 @@ namespace BenchmarkDotNet.Environments
             RuntimeVersion = RuntimeInformation.GetRuntimeVersion();
             Configuration = RuntimeInformation.GetConfiguration();
             HasRyuJit = RuntimeInformation.HasRyuJit();
+            JitInfo = RuntimeInformation.GetJitInfo();
             IsServerGC = GCSettings.IsServerGC;
             IsConcurrentGC = GCSettings.LatencyMode != GCLatencyMode.Batch;
         }
@@ -37,18 +43,20 @@ namespace BenchmarkDotNet.Environments
         public virtual IEnumerable<string> ToFormattedString()
         {
             yield return "Benchmark Process Environment Information:";
-            yield return $"Runtime={RuntimeVersion}, Arch={Architecture} {GetConfigurationFlag()}{GetDebuggerFlag()}{GetJitFlag()}";
-            yield return $"GC={GetGcConcurrentFlag()} {GetGcServerFlag()}";
+            yield return $"{RuntimeInfoPrefix}{GetRuntimeInfo()}";
+            yield return $"{GcInfoPrefix}{GetGcConcurrentFlag()} {GetGcServerFlag()}";
         }
 
-        protected string GetJitFlag() => HasRyuJit ? " [RyuJIT]" : "";
-
-        protected string GetConfigurationFlag() => Configuration == RuntimeInformation.Unknown ? "" : Configuration;
+        protected string GetConfigurationFlag() => Configuration == RuntimeInformation.Unknown || Configuration == RuntimeInformation.ReleaseConfigurationName
+            ? ""
+            : Configuration;
 
         protected string GetDebuggerFlag() => HasAttachedDebugger ? " [AttachedDebugger]" : "";
 
         protected string GetGcServerFlag() => IsServerGC ? "Server" : "Workstation";
 
         protected string GetGcConcurrentFlag() => IsConcurrentGC ? "Concurrent" : "Non-concurrent";
+
+        internal string GetRuntimeInfo() => $"{RuntimeVersion}, {Architecture} {JitInfo}{GetConfigurationFlag()}{GetDebuggerFlag()}";
     }
 }

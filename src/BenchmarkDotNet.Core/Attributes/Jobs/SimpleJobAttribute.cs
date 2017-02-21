@@ -5,10 +5,12 @@ namespace BenchmarkDotNet.Attributes.Jobs
 {
     public class SimpleJobAttribute : JobConfigBaseAttribute
     {
+        private const int DefaultValue = -1;
+
         public SimpleJobAttribute(
-            int launchCount = -1,
-            int warmupCount = -1,
-            int targetCount = -1,
+            int launchCount = DefaultValue,
+            int warmupCount = DefaultValue,
+            int targetCount = DefaultValue,
             string id = null
         ) : base(CreateJob(id, launchCount, warmupCount, targetCount, null))
         {
@@ -16,9 +18,9 @@ namespace BenchmarkDotNet.Attributes.Jobs
 
         public SimpleJobAttribute(
             RunStrategy runStrategy,
-            int launchCount = -1,
-            int warmupCount = -1,
-            int targetCount = -1,
+            int launchCount = DefaultValue,
+            int warmupCount = DefaultValue,
+            int targetCount = DefaultValue,
             string id = null
         ) : base(CreateJob(id, launchCount, warmupCount, targetCount, runStrategy))
         {
@@ -26,18 +28,17 @@ namespace BenchmarkDotNet.Attributes.Jobs
 
         private static Job CreateJob(string id, int launchCount, int warmupCount, int targetCount, RunStrategy? runStrategy)
         {
-            var job = Job.Default;
-            if (launchCount >= 0)
-                job = job.WithLaunchCount(launchCount);
-            if (warmupCount >= 0)
-                job = job.WithWarmupCount(warmupCount);
-            if (targetCount >= 0)
-                job = job.WithTargetCount(targetCount);
+            var job = new Job(id);
+            if (launchCount != DefaultValue)
+                job.Run.LaunchCount = launchCount;
+            if (warmupCount != DefaultValue)
+                job.Run.WarmupCount = warmupCount;
+            if (targetCount != DefaultValue)
+                job.Run.TargetCount = targetCount;
             if (runStrategy != null)
-                job = job.With(runStrategy.Value);
-            if (id != null)
-                job = job.WithId(id);
-            return job;
+                job.Run.RunStrategy = runStrategy.Value;
+
+            return job.Freeze();
         }
     }
 }

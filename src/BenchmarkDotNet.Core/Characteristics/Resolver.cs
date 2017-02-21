@@ -5,37 +5,36 @@ namespace BenchmarkDotNet.Characteristics
 {
     public class Resolver : IResolver
     {
-        private readonly Dictionary<string, Func<object>> resolvers = new Dictionary<string, Func<object>>();
+        private readonly Dictionary<Characteristic, Func<CharacteristicObject, object>> resolvers = new Dictionary<Characteristic, Func<CharacteristicObject, object>>();
 
-        protected void Register<T>(string id, Func<T> resolver)
+        protected void Register<T>(Characteristic<T> characteristic, Func<T> resolver) =>
+            resolvers[characteristic] = obj => resolver();
+
+        protected void Register<T>(Characteristic<T> characteristic, Func<CharacteristicObject, T> resolver) =>
+            resolvers[characteristic] = obj => resolver(obj);
+
+        public bool CanResolve(Characteristic characteristic) => resolvers.ContainsKey(characteristic);
+
+        public object Resolve(CharacteristicObject obj, Characteristic characteristic)
         {
-            resolvers[id] = () => resolver();
+            if (obj.HasValue(characteristic))
+                return characteristic[obj];
+
+            Func<CharacteristicObject, object> resolver;
+            if (resolvers.TryGetValue(characteristic, out resolver))
+                return resolver(obj);
+            throw new InvalidOperationException($"There is no default resolver for {characteristic.FullId}");
         }
 
-        protected void Register<T>(ICharacteristic<T> characteristic, Func<T> resolver) => Register(characteristic.Id, resolver);
-
-        public bool CanResolve(ICharacteristic characteristic) => resolvers.ContainsKey(characteristic.Id);
-
-        public T Resolve<T>(ICharacteristic<T> characteristic)
+        public T Resolve<T>(CharacteristicObject obj, Characteristic<T> characteristic)
         {
-            if (!characteristic.IsDefault)
-                return characteristic.SpecifiedValue;
+            if (obj.HasValue(characteristic))
+                return characteristic[obj];
 
-            Func<object> resolver;
-            if (resolvers.TryGetValue(characteristic.Id, out resolver))
-                return (T) resolver();
-            throw new InvalidOperationException($"There is no default resolver for {characteristic.Id}");
-        }
-
-        public object Resolve(ICharacteristic characteristic)
-        {
-            if (!characteristic.IsDefault)
-                return characteristic.ObjectValue;
-
-            Func<object> resolver;
-            if (resolvers.TryGetValue(characteristic.Id, out resolver))
-                return resolver();
-            throw new InvalidOperationException($"There is no default resolver for {characteristic.Id}");
+            Func<CharacteristicObject, object> resolver;
+            if (resolvers.TryGetValue(characteristic, out resolver))
+                return (T)resolver(obj);
+            throw new InvalidOperationException($"There is no default resolver for {characteristic.FullId}");
         }
     }
 }

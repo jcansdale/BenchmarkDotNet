@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using BenchmarkDotNet.Analysers;
 using BenchmarkDotNet.Characteristics;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Engines;
@@ -19,13 +20,14 @@ using BenchmarkDotNet.Validators;
 
 namespace BenchmarkDotNet.Running
 {
-    internal static class BenchmarkRunnerCore
+    // TODO: Find a better name
+    public static class BenchmarkRunnerCore
     {
         private static int benchmarkRunIndex;
 
-        internal static readonly IResolver DefaultResolver = new CompositeResolver(EnvResolver.Instance, InfraResolver.Instance);
+        internal static readonly IResolver DefaultResolver = new CompositeResolver(EnvResolver.Instance, InfrastructureResolver.Instance);
 
-        internal static Summary Run(Benchmark[] benchmarks, IConfig config, Func<Job, IToolchain> toolchainProvider)
+        public static Summary Run(Benchmark[] benchmarks, IConfig config, Func<Job, IToolchain> toolchainProvider)
         {
             var resolver = DefaultResolver;
             config = BenchmarkConverter.GetFullConfig(benchmarks.FirstOrDefault()?.Target.Type, config);
@@ -38,12 +40,7 @@ namespace BenchmarkDotNet.Running
                 var logger = new CompositeLogger(config.GetCompositeLogger(), new StreamLogger(logStreamWriter));
                 benchmarks = GetSupportedBenchmarks(benchmarks, logger, toolchainProvider, resolver);
 
-                var summary = Run(benchmarks, logger, title, config, rootArtifactsFolderPath, toolchainProvider, resolver);
-                if (!summary.HasCriticalValidationErrors)
-                {
-                    config.GetCompositeExporter().ExportToFiles(summary).ToArray();
-                }
-                return summary;
+                return Run(benchmarks, logger, title, config, rootArtifactsFolderPath, toolchainProvider, resolver);
             }
         }
 
@@ -56,7 +53,7 @@ namespace BenchmarkDotNet.Running
             return $"BenchmarkRun-{benchmarkRunIndex:##000}-{DateTime.Now:yyyy-MM-dd-hh-mm-ss}";
         }
 
-        private static Summary Run(Benchmark[] benchmarks, ILogger logger, string title, IConfig config, string rootArtifactsFolderPath, Func<Job, IToolchain> toolchainProvider, IResolver resolver)
+        public static Summary Run(Benchmark[] benchmarks, ILogger logger, string title, IConfig config, string rootArtifactsFolderPath, Func<Job, IToolchain> toolchainProvider, IResolver resolver)
         {
             logger.WriteLineHeader("// ***** BenchmarkRunner: Start   *****");
             logger.WriteLineInfo("// Found benchmarks:");
@@ -90,7 +87,7 @@ namespace BenchmarkDotNet.Running
 
             logger.WriteLineHeader("// * Export *");
             var currentDirectory = Directory.GetCurrentDirectory();
-            foreach (var file in config.GetCompositeExporter().ExportToFiles(summary))
+            foreach (var file in config.GetCompositeExporter().ExportToFiles(summary, logger))
             {
                 logger.WriteLineInfo($"  {file.Replace(currentDirectory, string.Empty).Trim('/', '\\')}");
             }
@@ -102,7 +99,12 @@ namespace BenchmarkDotNet.Running
             foreach (var report in reports)
             {
                 logger.WriteLineInfo(report.Benchmark.DisplayInfo);
-                logger.WriteLineStatistic(report.GetResultRuns().GetStatistics().ToTimeStr());
+                logger.WriteLineStatistic($"Runtime = {report.GetRuntimeInfo()}; GC = {report.GetGcInfo()}");
+                var resultRuns = report.GetResultRuns();
+                if (resultRuns.IsEmpty())
+                    logger.WriteLineError("There are no any results runs");
+                else
+                    logger.WriteLineStatistic(resultRuns.GetStatistics().ToTimeStr());
                 logger.WriteLine();
             }
 
@@ -113,16 +115,9 @@ namespace BenchmarkDotNet.Running
             MarkdownExporter.Console.ExportToLog(summary, logger);
 
             // TODO: make exporter
-            var warnings = config.GetCompositeAnalyser().Analyse(summary).ToList();
-            if (warnings.Count > 0)
-            {
-                logger.WriteLine();
-                logger.WriteLineError("// * Warnings * ");
-                foreach (var warning in warnings)
-                    logger.WriteLineError($"{warning.Message}");
-            }
+            ConclusionHelper.Print(logger, config.GetCompositeAnalyser().Analyse(summary).ToList());
 
-            if (config.GetDiagnosers().Count() > 0)
+            if (config.GetDiagnosers().Any())
             {
                 logger.WriteLine();
                 config.GetCompositeDiagnoser().DisplayResults(logger);
@@ -133,10 +128,10 @@ namespace BenchmarkDotNet.Running
             return summary;
         }
 
-        private static ValidationError[] Validate(IList<Benchmark> benchmarks, ILogger logger, IConfig config)
+        private static ValidationError[] Validate(IReadOnlyList<Benchmark> benchmarks, ILogger logger, IConfig config)
         {
             logger.WriteLineInfo("// Validating benchmarks:");
-            var validationErrors = config.GetCompositeValidator().Validate(benchmarks).ToArray();
+            var validationErrors = config.GetCompositeValidator().Validate(new ValidationParameters(benchmarks, config)).ToArray();
             foreach (var validationError in validationErrors)
             {
                 logger.WriteLineError(validationError.Message);
@@ -149,7 +144,7 @@ namespace BenchmarkDotNet.Running
             logger.WriteLineStatistic($"{message}: {time.ToFormattedTotalTime()}");
         }
 
-        private static BenchmarkReport Run(Benchmark benchmark, ILogger logger, IConfig config, string rootArtifactsFolderPath, Func<Job, IToolchain> toolchainProvider, IResolver resolver)
+        public static BenchmarkReport Run(Benchmark benchmark, ILogger logger, IConfig config, string rootArtifactsFolderPath, Func<Job, IToolchain> toolchainProvider, IResolver resolver)
         {
             var toolchain = toolchainProvider(benchmark.Job);
 
@@ -157,26 +152,28 @@ namespace BenchmarkDotNet.Running
             logger.WriteLineHeader("// Benchmark: " + benchmark.DisplayInfo);
 
             var generateResult = Generate(logger, toolchain, benchmark, rootArtifactsFolderPath, config, resolver);
-            
+
             try
             {
                 if (!generateResult.IsGenerateSuccess)
-                    return new BenchmarkReport(benchmark, generateResult, null, null, null);
+                    return new BenchmarkReport(benchmark, generateResult, null, null, null, default(GcStats));
 
                 var buildResult = Build(logger, toolchain, generateResult, benchmark, resolver);
                 if (!buildResult.IsBuildSuccess)
-                    return new BenchmarkReport(benchmark, generateResult, buildResult, null, null);
+                    return new BenchmarkReport(benchmark, generateResult, buildResult, null, null, default(GcStats));
 
-                List<ExecuteResult> executeResults = Execute(logger, benchmark, toolchain, buildResult, config, resolver);
+                var gcStats = default(GcStats);
+                var executeResults = Execute(logger, benchmark, toolchain, buildResult, config, resolver, out gcStats);
 
                 var runs = new List<Measurement>();
+                
                 for (int index = 0; index < executeResults.Count; index++)
                 {
                     var executeResult = executeResults[index];
                     runs.AddRange(executeResult.Data.Select(line => Measurement.Parse(logger, line, index + 1)).Where(r => r.IterationMode != IterationMode.Unknown));
                 }
 
-                return new BenchmarkReport(benchmark, generateResult, buildResult, executeResults, runs);
+                return new BenchmarkReport(benchmark, generateResult, buildResult, executeResults, runs, gcStats);
             }
             finally
             {
@@ -200,7 +197,7 @@ namespace BenchmarkDotNet.Running
             {
                 logger.WriteLineError("// Result = Failure");
                 if (generateResult.GenerateException != null)
-                    logger.WriteLineError($"// Exception: {generateResult.GenerateException.Message}");
+                    logger.WriteLineError($"// Exception: {generateResult.GenerateException}");
             }
             logger.WriteLine();
             return generateResult;
@@ -224,17 +221,27 @@ namespace BenchmarkDotNet.Running
             return buildResult;
         }
 
-        private static List<ExecuteResult> Execute(ILogger logger, Benchmark benchmark, IToolchain toolchain, BuildResult buildResult, IConfig config, IResolver resolver)
+        private static List<ExecuteResult> Execute(ILogger logger, Benchmark benchmark, IToolchain toolchain, BuildResult buildResult, IConfig config, IResolver resolver, out GcStats gcStats)
         {
             var executeResults = new List<ExecuteResult>();
+            gcStats = default(GcStats);
 
             logger.WriteLineInfo("// *** Execute ***");
-            var launchCount = Math.Max(1, benchmark.Job.Run.LaunchCount.IsDefault ? 2 : benchmark.Job.Run.LaunchCount.SpecifiedValue);
+            bool analyzeRunToRunVariance = benchmark.Job.ResolveValue(AccuracyMode.AnalyzeLaunchVarianceCharacteristic, resolver);
+            bool autoLaunchCount = !benchmark.Job.HasValue(RunMode.LaunchCountCharacteristic);
+            int defaultValue = analyzeRunToRunVariance ? 2 : 1;
+            int launchCount = Math.Max(
+                1,
+                autoLaunchCount ? defaultValue: benchmark.Job.Run.LaunchCount);
 
-            for (int processNumber = 0; processNumber < launchCount; processNumber++)
+            for (int launchIndex = 0; launchIndex < launchCount; launchIndex++)
             {
-                var printedProcessNumber = (benchmark.Job.Run.LaunchCount.IsDefault && processNumber < 2) ? "" : " / " + launchCount.ToString();
-                logger.WriteLineInfo($"// Launch: {processNumber + 1}{printedProcessNumber}");
+                string printedLaunchCount = (analyzeRunToRunVariance &&
+                    autoLaunchCount &&
+                    launchIndex < 2)
+                    ? ""
+                    : " / " + launchCount;
+                logger.WriteLineInfo($"// Launch: {launchIndex + 1}{printedLaunchCount}");
 
                 var executeResult = toolchain.Executor.Execute(buildResult, benchmark, logger, resolver);
 
@@ -253,12 +260,13 @@ namespace BenchmarkDotNet.Running
                 if (!measurements.Any())
                 {
                     // Something went wrong during the benchmark, don't bother doing more runs
-                    logger.WriteLineError($"No more Benchmark runs will be launched as NO measurements were obtained from the previous run!");
+                    logger.WriteLineError("No more Benchmark runs will be launched as NO measurements were obtained from the previous run!");
                     break;
                 }
 
-                if (benchmark.Job.Run.LaunchCount.IsDefault && processNumber == 1)
+                if (autoLaunchCount && launchIndex == 1 && analyzeRunToRunVariance)
                 {
+                    // TODO: improve this logic
                     var idleApprox = new Statistics(measurements.Where(m => m.IterationMode == IterationMode.IdleTarget).Select(m => m.Nanoseconds)).Median;
                     var mainApprox = new Statistics(measurements.Where(m => m.IterationMode == IterationMode.MainTarget).Select(m => m.Nanoseconds)).Median;
                     var percent = idleApprox / mainApprox * 100;
@@ -268,14 +276,17 @@ namespace BenchmarkDotNet.Running
             logger.WriteLine();
 
             // Do a "Diagnostic" run, but DISCARD the results, so that the overhead of Diagnostics doesn't skew the overall results
-            if (config.GetDiagnosers().Count() > 0)
+            if (config.GetDiagnosers().Any())
             {
-                logger.WriteLineInfo($"// Run, Diagnostic");
-                config.GetCompositeDiagnoser().Start(benchmark);
-                var executeResult = toolchain.Executor.Execute(buildResult, benchmark, logger, resolver, config.GetCompositeDiagnoser());
+                logger.WriteLineInfo("// Run, Diagnostic");
+                var compositeDiagnoser = config.GetCompositeDiagnoser();
+
+                var executeResult = toolchain.Executor.Execute(buildResult, benchmark, logger, resolver, compositeDiagnoser);
+
                 var allRuns = executeResult.Data.Select(line => Measurement.Parse(logger, line, 0)).Where(r => r.IterationMode != IterationMode.Unknown).ToList();
-                var report = new BenchmarkReport(benchmark, null, null, new[] { executeResult }, allRuns);
-                config.GetCompositeDiagnoser().Stop(benchmark, report);
+                gcStats = GcStats.Parse(executeResult.Data.Last());
+                var report = new BenchmarkReport(benchmark, null, null, new[] { executeResult }, allRuns, gcStats);
+                compositeDiagnoser.ProcessResults(benchmark, report);
 
                 if (!executeResult.FoundExecutable)
                     logger.WriteLineError("Executable not found");

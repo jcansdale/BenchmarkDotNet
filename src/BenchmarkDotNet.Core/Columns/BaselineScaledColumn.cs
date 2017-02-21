@@ -27,6 +27,8 @@ namespace BenchmarkDotNet.Columns
             Kind = kind;
         }
 
+        public string Id => nameof(BaselineScaledColumn) + "." + Kind;
+
         public string ColumnName
         {
             get
@@ -54,7 +56,7 @@ namespace BenchmarkDotNet.Columns
             bool invalidResults = baseline == null ||
                                  summary[baseline] == null ||
                                  summary[baseline].ResultStatistics == null ||
-                                 summary[baseline].ResultStatistics.Invert() == null ||
+                                 !summary[baseline].ResultStatistics.CanBeInverted() ||
                                  summary[benchmark] == null ||
                                  summary[benchmark].ResultStatistics == null;
 
@@ -75,6 +77,8 @@ namespace BenchmarkDotNet.Columns
                     return stdDev.ToStr("N2");
                 case DiffKind.WelchTTestPValue:
                 {
+                    if (baselineStat.N < 2 || targetStat.N < 2)
+                        return "NA";
                     double pvalue = WelchTTest.Calc(baselineStat, targetStat).PValue;
                     return pvalue > 0.0001 ? pvalue.ToStr("N4") : pvalue.ToStr("e2");
                 }
@@ -85,7 +89,8 @@ namespace BenchmarkDotNet.Columns
 
         public bool IsAvailable(Summary summary) => summary.Benchmarks.Any(b => b.Target.Baseline);
         public bool AlwaysShow => true;
-        public ColumnCategory Category => ColumnCategory.Statistics;
+        public ColumnCategory Category => ColumnCategory.Baseline;
+        public int PriorityInCategory => (int) Kind;
         public override string ToString() => ColumnName;
         public bool IsDefault(Summary summary, Benchmark benchmark) => false;
     }

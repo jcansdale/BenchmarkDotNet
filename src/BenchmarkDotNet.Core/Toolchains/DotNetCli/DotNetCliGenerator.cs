@@ -9,21 +9,24 @@ using BenchmarkDotNet.Extensions;
 using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
+using JetBrains.Annotations;
 
 namespace BenchmarkDotNet.Toolchains.DotNetCli
 {
-    internal class DotNetCliGenerator : GeneratorBase
+    [PublicAPI("Used by some of our Superusers that implement their own Toolchains (e.g. Kestrel team)")]
+    public class DotNetCliGenerator : GeneratorBase
     {
-        private string TargetFrameworkMoniker { get; }
+        protected string TargetFrameworkMoniker { get; }
+
+        protected Func<Platform, string> PlatformProvider { get; }
 
         private string ExtraDependencies { get; }
-
-        private Func<Platform, string> PlatformProvider { get; }
 
         private string Imports { get; }
 
         private string Runtime { get; }
 
+        [PublicAPI("Used by some of our Superusers that implement their own Toolchains (e.g. Kestrel team)")]
         public DotNetCliGenerator(
             string targetFrameworkMoniker,
             string extraDependencies,
@@ -101,14 +104,14 @@ namespace BenchmarkDotNet.Toolchains.DotNetCli
             if (!Directory.Exists(artifactsPaths.BinariesDirectoryPath))
             {
                 Directory.CreateDirectory(artifactsPaths.BinariesDirectoryPath);
-            }   
+            }
         }
 
         protected override void GenerateProject(Benchmark benchmark, ArtifactsPaths artifactsPaths, IResolver resolver)
         {
             string template = ResourceHelper.LoadTemplate("BenchmarkProject.json");
 
-            string content = SetPlatform(template, PlatformProvider(benchmark.Job.Env.Platform.Resolve(resolver)));
+            string content = SetPlatform(template, PlatformProvider(benchmark.Job.ResolveValue(EnvMode.PlatformCharacteristic, resolver)));
             content = SetCodeFileName(content, Path.GetFileName(artifactsPaths.ProgramCodePath));
             content = SetDependencyToExecutingAssembly(content, benchmark.Target.Type);
             content = SetTargetFrameworkMoniker(content, TargetFrameworkMoniker);
@@ -128,11 +131,11 @@ namespace BenchmarkDotNet.Toolchains.DotNetCli
             File.WriteAllText(artifactsPaths.BuildScriptFilePath, content);
         }
 
-        private static string SetPlatform(string template, string platform) => template.Replace("$PLATFORM$", platform);
+        protected static string SetPlatform(string template, string platform) => template.Replace("$PLATFORM$", platform);
 
-        private static string SetCodeFileName(string template, string codeFileName) => template.Replace("$CODEFILENAME$", codeFileName);
+        protected static string SetCodeFileName(string template, string codeFileName) => template.Replace("$CODEFILENAME$", codeFileName);
 
-        private static string SetDependencyToExecutingAssembly(string template, Type benchmarkTarget)
+        protected virtual string SetDependencyToExecutingAssembly(string template, Type benchmarkTarget)
         {
             var assemblyName = benchmarkTarget.GetTypeInfo().Assembly.GetName();
             string packageVersion = GetPackageVersion(assemblyName);
@@ -142,7 +145,7 @@ namespace BenchmarkDotNet.Toolchains.DotNetCli
                 Replace("$EXECUTINGASSEMBLY$", assemblyName.Name);
         }
 
-        private static string SetTargetFrameworkMoniker(string content, string targetFrameworkMoniker) => content.Replace("$TFM$", targetFrameworkMoniker);
+        protected static string SetTargetFrameworkMoniker(string content, string targetFrameworkMoniker) => content.Replace("$TFM$", targetFrameworkMoniker);
 
         private static string SetExtraDependencies(string content, string extraDependencies) => content.Replace("$REQUIREDDEPENDENCY$", extraDependencies);
 
@@ -152,12 +155,14 @@ namespace BenchmarkDotNet.Toolchains.DotNetCli
 
         private static string SetGcMode(string content, GcMode gcMode, IResolver resolver)
         {
-            if (gcMode.ToSet().GetValues().All(c => c.IsDefault))
+            if (!gcMode.HasChanges)
                 return content.Replace("$GC$", null);
 
             return content.Replace(
                 "$GC$",
-                $"\"runtimeOptions\": {{ \"configProperties\": {{ \"System.GC.Concurrent\": {gcMode.Concurrent.Resolve(resolver).ToLowerCase()}, \"System.GC.Server\": {gcMode.Server.Resolve(resolver).ToLowerCase()} }} }}, ");
+                $"\"runtimeOptions\": {{ \"configProperties\": {{ " +
+                $"\"System.GC.Concurrent\": {gcMode.ResolveValue(GcMode.ConcurrentCharacteristic, resolver).ToLowerCase()}, " +
+                $"\"System.GC.Server\": {gcMode.ResolveValue(GcMode.ServerCharacteristic, resolver).ToLowerCase()} }} }}, ");
         }
 
         private static string GetPackageVersion(AssemblyName assemblyName)
@@ -176,7 +181,7 @@ namespace BenchmarkDotNet.Toolchains.DotNetCli
 
             return directoryInfo
                 .GetFileSystemInfos()
-                .Any(fileInfo => fileInfo.Extension == "sln" || fileInfo.Name == "global.json");
+                .Any(fileInfo => fileInfo.Extension == ".sln" || fileInfo.Name == "global.json");
         }
     }
 }

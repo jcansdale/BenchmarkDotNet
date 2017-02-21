@@ -2,7 +2,6 @@
 using BenchmarkDotNet.Engines;
 using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Extensions;
-using BenchmarkDotNet.Helpers;
 using BenchmarkDotNet.Loggers;
 
 namespace BenchmarkDotNet.Reports
@@ -10,7 +9,7 @@ namespace BenchmarkDotNet.Reports
     /// <summary>
     /// The basic captured statistics for a benchmark.
     /// </summary>
-    public struct Measurement
+    public struct Measurement : IComparable<Measurement>
     {
         private static readonly Measurement Error = new Measurement(-1, IterationMode.Unknown, 0, 0, 0);
 
@@ -31,7 +30,7 @@ namespace BenchmarkDotNet.Reports
         public double Nanoseconds { get; }
 
         /// <summary>
-        /// Creates an instance of <see cref="Measurement"/> class.
+        /// Creates an instance of <see cref="Measurement"/> struct.
         /// </summary>
         /// <param name="launchIndex"></param>
         /// <param name="iterationMode"></param>
@@ -67,6 +66,9 @@ namespace BenchmarkDotNet.Reports
         /// <returns>An instance of <see cref="Measurement"/> if parsed successfully. <c>Null</c> in case of any trouble.</returns>
         public static Measurement Parse(ILogger logger, string line, int processIndex)
         {
+            if (line != null && line.StartsWith(GcStats.ResultsLinePrefix))
+                return Error;
+
             try
             {
                 var lineSplit = line.Split(new[] { ':' }, StringSplitOptions.RemoveEmptyEntries);
@@ -111,6 +113,8 @@ namespace BenchmarkDotNet.Reports
             IterationMode mode;
             return Enum.TryParse(name, out mode) ? mode : IterationMode.Unknown;
         }
+
+        public int CompareTo(Measurement other) => Nanoseconds.CompareTo(other.Nanoseconds);
 
         public override string ToString() => $"#{LaunchIndex}/{IterationMode} {IterationIndex}: {Operations} op, {Nanoseconds.ToTimeStr()}";
     }

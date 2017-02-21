@@ -22,6 +22,8 @@ namespace BenchmarkDotNet.Extensions
         internal static bool HasAttribute<T>(this MethodInfo methodInfo) where T : Attribute =>
             methodInfo.ResolveAttribute<T>() != null;
 
+        internal static bool IsNullable(this Type type) => Nullable.GetUnderlyingType(type) != null;
+
         internal static string GetCorrectTypeName(this Type type)
         {
             if (type == typeof(void))
@@ -78,6 +80,12 @@ namespace BenchmarkDotNet.Extensions
                     yield return propertyInfo;
                 typeInfo = typeInfo.BaseType?.GetTypeInfo();
             }
+        }
+
+        internal static bool IsStruct(this Type type)
+        {
+            var typeInfo = type.GetTypeInfo();
+            return typeInfo.IsValueType && !typeInfo.IsPrimitive;
         }
     }
 }
